@@ -95,17 +95,20 @@ lại chính file zip vừa tạo. Nếu báo lỗi, KHÔNG nộp — sửa xong
 
 ## 2. Log chi tiết nằm ở đâu (console chỉ in tóm tắt, tránh spam khi chạy 13 scene)
 
-| File log | Ghi gì |
-|---|---|
-| `work/<scene>/colmap/colmap.log` | Từng bước COLMAP ([1/4]...[4/4]) |
-| `work/<scene>/colmap/pycolmap_internal_logs/` | Log nội bộ rất chi tiết của chính thư viện COLMAP (glog) |
-| `work/<scene>/train.log` | Toàn bộ output của `train.py` (loss/iteration...) |
-| `work/<scene>/render.log` | Từng ảnh đã render (tên file, thứ tự) |
+Tên file log luôn trùng với tên script sinh ra nó, dễ tra cứu:
+
+| File log | Script sinh ra | Ghi gì |
+|---|---|---|
+| `work/<scene>/01_run_colmap.log` | `01_run_colmap.py` | Từng bước COLMAP hoặc undistort sparse có sẵn |
+| `work/<scene>/02_validate_frame.log` | `02_validate_frame.py` | Từng bước COLMAP khi tự chạy lại để đối chiếu |
+| `work/<scene>/03_train_3dgs.log` | `03_train_3dgs.sh` | Toàn bộ output của `train.py` (loss/iteration...) |
+| `work/<scene>/04_render_test_poses.log` | `04_render_test_poses.py` | Từng ảnh đã render (tên file, thứ tự) |
+| `work/<scene>/colmap/pycolmap_internal_logs/` | (COLMAP nội bộ) | Log rất chi tiết của chính thư viện COLMAP (glog) |
 
 Console/notebook chỉ hiện 1-2 dòng tóm tắt mỗi scene (số ảnh đăng ký, số điểm 3D,
 đường dẫn log) — cần xem chi tiết thì mở đúng file log tương ứng ở trên. Nếu
-`03_train_3dgs.sh` báo lỗi, nó tự in 50 dòng cuối của `train.log` ra console để
-không phải mò file khi có sự cố.
+`03_train_3dgs.sh` báo lỗi, nó tự in 50 dòng cuối của `03_train_3dgs.log` ra
+console để không phải mò file khi có sự cố.
 
 ## 3. Ghi chú quan trọng nằm rải trong code (đọc trước khi chạy)
 

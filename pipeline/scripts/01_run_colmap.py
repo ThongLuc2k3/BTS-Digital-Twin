@@ -2,9 +2,8 @@
 """Chuẩn bị dữ liệu COLMAP (sparse + ảnh undistort PINHOLE) cho 1 scene hoặc
 toàn bộ scene, sẵn sàng đưa vào train 3D Gaussian Splatting.
 
-Từ khi BTC cập nhật lại dataset (xem Dataset/README.md), CẢ 13/13 scene đều có
-sẵn sparse hợp lệ — mặc định script này DÙNG THẲNG sparse có sẵn (chỉ undistort,
-rất nhanh), KHÔNG tự chạy lại COLMAP nữa. Chỉ tự chạy COLMAP khi:
+Dataset có sparse hợp lệ ở cả 13/13 scene — mặc định script này DÙNG THẲNG sparse
+có sẵn (chỉ undistort, rất nhanh), KHÔNG tự chạy lại COLMAP. Chỉ tự chạy COLMAP khi:
   - Scene không có sparse hợp lệ (`has_valid_provided_sparse()` = False), hoặc
   - Người dùng ép buộc qua --force_own_colmap (vd để đối chiếu/nghi ngờ dữ liệu).
 
@@ -28,9 +27,21 @@ from common.poses import representative_intrinsics
 WORK_ROOT = Path(__file__).resolve().parents[1] / "work"
 
 
+def _report_missing_images(scene: Scene, result: dict) -> None:
+    """In rõ TÊN FILE nào có pose trong sparse nhưng không có ảnh thật trên đĩa —
+    đây là đặc điểm bình thường của dữ liệu (sparse có thể dựng từ tập ảnh gốc
+    lớn hơn train/images/ đã phát hành), KHÔNG phải lỗi COLMAP hay lỗi tải dữ
+    liệu, nên tách riêng khỏi cảnh báo "tỉ lệ đăng ký thấp"."""
+    missing = result.get("missing_images") or []
+    if missing:
+        print(f"[LƯU Ý] {scene.name}: {len(missing)} ảnh có pose trong sparse nhưng không có file "
+              f"trong train/images/ (đã tự loại ra, không phải lỗi): {missing}")
+
+
 def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool,
                    overwrite: bool, force_own_colmap: bool):
     workdir = WORK_ROOT / scene.name / "colmap"
+    log_path = WORK_ROOT / scene.name / "01_run_colmap.log"
 
     if scene.has_valid_provided_sparse() and not force_own_colmap:
         print(f"===== {scene.name} ({scene.split}) — dùng sparse có sẵn (bỏ qua tự chạy COLMAP) =====")
@@ -38,10 +49,12 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
             images_dir=scene.train_images_dir,
             sparse_dir=scene.provided_sparse_dir,
             workdir=workdir,
+            log_path=log_path,
         )
         n_total = len(list(scene.train_images_dir.glob("*")))
         print(f"-> {result['num_reg_images']}/{n_total} ảnh, {result['num_points3D']} điểm 3D (từ sparse có sẵn). "
               f"Dense: {result['dense_dir']} | Log: {result['log_path']}")
+        _report_missing_images(scene, result)
         return result
 
     camera_params_prior = None
@@ -60,10 +73,12 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
         camera_model=camera_model,
         camera_params_prior=camera_params_prior,
         overwrite=overwrite,
+        log_path=log_path,
     )
     n_total = len(list(scene.train_images_dir.glob("*")))
     print(f"-> {result['num_reg_images']}/{n_total} ảnh đăng ký, {result['num_points3D']} điểm 3D. "
           f"Dense: {result['dense_dir']} | Log chi tiết: {result['log_path']}")
+    _report_missing_images(scene, result)
     if result["num_reg_images"] < 0.8 * n_total:
         print(f"[CẢNH BÁO] {scene.name}: tỉ lệ đăng ký ảnh thấp (<80%) — cân nhắc thử "
               f"--matching exhaustive hoặc kiểm tra lại ảnh scene này.")

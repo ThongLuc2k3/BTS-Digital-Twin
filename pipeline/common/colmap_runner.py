@@ -24,14 +24,45 @@ import pycolmap
 from common.logging_utils import FileLog, quiet_pycolmap
 
 
-def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Path) -> None:
+def _find_missing_images(rec: "pycolmap.Reconstruction", images_dir: Path) -> tuple[list[str], list[str]]:
+    """So khớp danh sách ảnh mà sparse THAM CHIẾU (có pose trong images.bin) với
+    ảnh THỰC SỰ có trong images_dir trên đĩa.
+
+    Đây KHÔNG phải trường hợp hiếm/lỗi lạ — sparse do BTC tạo có thể dựng từ tập
+    ảnh gốc lớn hơn rồi mới cắt bớt khi đóng gói train/images/, nên 1 vài ảnh có
+    pose trong sparse nhưng không tồn tại trên đĩa là chuyện bình thường, không
+    phải bug. Quan trọng là phải biết CHÍNH XÁC tên file nào thiếu (không chỉ
+    đếm số lượng lệch) để không nhầm với lỗi thật (vd thiếu quá nhiều/thiếu hết).
+
+    Trả về (valid_names, missing_names) — valid_names dùng để truyền cho
+    pycolmap.undistort_images(image_names=...), tránh nó tự crash khi gặp ảnh
+    không tồn tại.
+    """
+    all_names = sorted(image.name for image in rec.images.values())
+    valid_names = [n for n in all_names if (images_dir / n).exists()]
+    missing_names = sorted(set(all_names) - set(valid_names))
+    return valid_names, missing_names
+
+
+def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Path,
+                               rec: "pycolmap.Reconstruction", log: FileLog) -> list[str]:
     """undistort_images ghi thẳng vào <dense_dir>/sparse/*.bin (không có "0/"),
     trong khi graphdeco-inria/gaussian-splatting cần <source>/sparse/0/*.bin —
-    dùng chung cho cả 2 đường (tự chạy COLMAP / dùng thẳng sparse có sẵn)."""
+    dùng chung cho cả 2 đường (tự chạy COLMAP / dùng thẳng sparse có sẵn).
+
+    Trả về danh sách tên ảnh bị thiếu (rỗng nếu đủ) để caller báo cáo lại.
+    """
+    valid_names, missing_names = _find_missing_images(rec, images_dir)
+    if missing_names:
+        log.write(f"[CẢNH BÁO] {len(missing_names)}/{len(valid_names) + len(missing_names)} ảnh "
+                  f"có pose trong sparse nhưng KHÔNG có file trong {images_dir} — bỏ qua các ảnh "
+                  f"này (không undistort), không phải lỗi COLMAP: {missing_names}")
+
     pycolmap.undistort_images(
         output_path=dense_dir,
         input_path=sparse_dir,
         image_path=images_dir,
+        image_names=valid_names,
         output_type="COLMAP",
     )
     flat_sparse = dense_dir / "sparse"
@@ -42,21 +73,28 @@ def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Pat
         tmp_nested = dense_dir / "sparse"
         tmp_nested.mkdir(parents=True)
         tmp.rename(tmp_nested / "0")
+    return missing_names
 
 
-def use_provided_sparse(images_dir: Path, sparse_dir: Path, workdir: Path) -> dict:
+def use_provided_sparse(images_dir: Path, sparse_dir: Path, workdir: Path,
+                         log_path: Path | None = None) -> dict:
     """Dùng THẲNG sparse đã có sẵn (do BTC cung cấp) — KHÔNG tự chạy COLMAP.
 
-    Kể từ khi BTC cập nhật lại dataset (xem Dataset/README.md), cả 13/13 scene
-    đều có sparse/0/ hợp lệ, nên bước feature extraction + matching + incremental
-    mapping (vốn tốn thời gian và dễ lỗi nhất) không còn cần thiết cho hầu hết
-    trường hợp — chỉ còn bước undistort (rất nhanh, vài giây tới vài chục giây)
-    để chuyển sang PINHOLE sạch trước khi đưa vào 3D Gaussian Splatting.
+    Dataset có sparse/0/ hợp lệ ở cả 13/13 scene, nên bước feature extraction +
+    matching + incremental mapping (vốn tốn thời gian và dễ lỗi nhất) không còn
+    cần thiết cho hầu hết trường hợp — chỉ còn bước undistort (rất nhanh, vài
+    giây tới vài chục giây) để chuyển sang PINHOLE sạch trước khi đưa vào 3DGS.
+
+    log_path: đường dẫn file log (mặc định workdir/colmap.log nếu không truyền) —
+    truyền vào để đặt tên log trùng với tên script gọi hàm này, dễ tra cứu hơn.
 
     Trả về dict cùng format với run_colmap_scene(), thêm "used_provided_sparse": True.
+    "num_reg_images" đã TRỪ ĐI số ảnh thiếu file thật (xem "missing_images" —
+    danh sách tên ảnh có pose trong sparse nhưng không có file trên đĩa, bị tự
+    động loại ra khi undistort, không phải lỗi).
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    log_path = workdir / "colmap.log"
+    log_path = log_path if log_path is not None else workdir / "colmap.log"
     log = FileLog(log_path)
     quiet_pycolmap(log_dir=workdir / "pycolmap_internal_logs")
 
@@ -66,18 +104,19 @@ def use_provided_sparse(images_dir: Path, sparse_dir: Path, workdir: Path) -> di
 
     dense_dir = workdir / "dense"
     log.write(f"Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
-    _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir)
+    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, rec, log)
 
-    log.write(f"Xong. num_reg_images={rec.num_reg_images()} num_points3D={rec.num_points3D()}")
+    log.write(f"Xong. num_reg_images={rec.num_reg_images() - len(missing_images)} num_points3D={rec.num_points3D()}")
     log.close()
 
     return {
         "sparse_dir": sparse_dir,
         "dense_dir": dense_dir,
-        "num_reg_images": rec.num_reg_images(),
+        "num_reg_images": rec.num_reg_images() - len(missing_images),
         "num_points3D": rec.num_points3D(),
         "log_path": log_path,
         "used_provided_sparse": True,
+        "missing_images": missing_images,
     }
 
 
@@ -88,22 +127,27 @@ def run_colmap_scene(
     camera_model: str = "SIMPLE_RADIAL",
     camera_params_prior: str | None = None,
     overwrite: bool = False,
+    log_path: Path | None = None,
 ) -> dict:
     """Chạy toàn bộ pipeline SfM cho 1 scene.
 
     Các bước trung gian ([1/4]...[4/4]) chỉ ghi vào file log (không in ra
     console) — xem "log_path" trong dict trả về nếu cần tra cứu chi tiết.
 
+    log_path: đường dẫn file log (mặc định workdir/colmap.log nếu không truyền) —
+    truyền vào để đặt tên log trùng với tên script gọi hàm này, dễ tra cứu hơn.
+
     Trả về dict {
         "sparse_dir": Path,      # workdir/sparse/<best_idx>  (định dạng COLMAP gốc, có thể méo)
         "dense_dir": Path,       # workdir/dense              (images/ + sparse/0/, đã undistort PINHOLE)
-        "num_reg_images": int,
+        "num_reg_images": int,   # đã trừ đi ảnh có pose nhưng thiếu file thật (xem "missing_images")
         "num_points3D": int,
         "log_path": Path,
+        "missing_images": list[str],  # tên ảnh có pose trong sparse nhưng không có file trên đĩa
     }
     """
     workdir.mkdir(parents=True, exist_ok=True)
-    log_path = workdir / "colmap.log"
+    log_path = log_path if log_path is not None else workdir / "colmap.log"
     log = FileLog(log_path)
     quiet_pycolmap(log_dir=workdir / "pycolmap_internal_logs")
 
@@ -172,16 +216,17 @@ def run_colmap_scene(
 
     dense_dir = workdir / "dense"
     log.write(f"[4/4] Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
-    _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir)
+    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, best_rec, log)
 
-    log.write(f"Xong. num_reg_images={best_rec.num_reg_images()} num_points3D={best_rec.num_points3D()}")
+    log.write(f"Xong. num_reg_images={best_rec.num_reg_images() - len(missing_images)} num_points3D={best_rec.num_points3D()}")
     log.close()
 
     return {
         "sparse_dir": sparse_dir,
         "dense_dir": dense_dir,
-        "num_reg_images": best_rec.num_reg_images(),
+        "num_reg_images": best_rec.num_reg_images() - len(missing_images),
         "num_points3D": best_rec.num_points3D(),
         "log_path": log_path,
         "used_provided_sparse": False,
+        "missing_images": missing_images,
     }

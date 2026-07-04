@@ -75,7 +75,7 @@ SAVE_ITERATIONS=($(printf "%s\n" "${SAVE_ITERATIONS[@]}" | awk '!seen[$0]++'))
 for SCENE in "$@"; do
   SOURCE_DIR="$PIPELINE_DIR/work/$SCENE/colmap/dense"
   MODEL_DIR="$PIPELINE_DIR/work/$SCENE/gs_model"
-  LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
+  LOG_FILE="$PIPELINE_DIR/work/$SCENE/03_train_3dgs.log"
 
   if [[ ! -d "$SOURCE_DIR/sparse/0" ]]; then
     echo "[BỎ QUA] $SCENE: chưa thấy $SOURCE_DIR/sparse/0 — chạy 01_run_colmap.py --scene $SCENE trước." >&2

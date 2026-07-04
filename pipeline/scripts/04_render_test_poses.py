@@ -105,7 +105,7 @@ def main():
     pipe = _PipelineParamsStub()
 
     poses = read_test_poses(scene.test_poses_csv)
-    log_path = out_dir.parent / "render.log"
+    log_path = out_dir.parent / "04_render_test_poses.log"
     log = FileLog(log_path)
     print(f"===== {scene.name}: render {len(poses)} pose (iteration {iteration}) -> {out_dir} =====")
     log.write(f"Model: {ply_path}")

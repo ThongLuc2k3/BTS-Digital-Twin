@@ -63,13 +63,16 @@ def main():
 
     print(f"\nTự chạy COLMAP trên train/images/ của {SCENE_NAME} (không dùng sparse gốc) ...")
     fx, cx, cy, width, height = representative_intrinsics(scene.test_poses_csv)
-    workdir = Path(__file__).resolve().parents[1] / "work" / scene.name / "colmap_own_validation"
+    work_root = Path(__file__).resolve().parents[1] / "work" / scene.name
+    workdir = work_root / "colmap_own_validation"
+    log_path = work_root / "02_validate_frame.log"
     result = run_colmap_scene(
         images_dir=scene.train_images_dir,
         workdir=workdir,
         matching="sequential",
         camera_model="SIMPLE_RADIAL",
         camera_params_prior=f"{fx},{cx},{cy},0.0",
+        log_path=log_path,
     )
     own_rec = pycolmap.Reconstruction(result["sparse_dir"])
     own_centers = load_camera_centers(own_rec)

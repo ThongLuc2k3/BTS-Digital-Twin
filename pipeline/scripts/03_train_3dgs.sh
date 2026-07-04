@@ -16,6 +16,7 @@
 #   ./03_train_3dgs.sh HCM0181                 # train 1 scene
 #   ./03_train_3dgs.sh HCM0181 HCM0193 hcm0031 # train nhiều scene liên tiếp
 #   ITERATIONS=15000 ./03_train_3dgs.sh HCM0181   # đổi số iteration (mặc định 30000 của repo)
+#   PROGRESS_INTERVAL=30 ./03_train_3dgs.sh HCM0181  # in tiến độ mỗi 30s thay vì 60s mặc định
 #
 # Nếu bị "CUDA out of memory" (hay gặp với scene nhiều chi tiết mảnh — dây cáp,
 # khung thép BTS — vì số Gaussian sinh ra qua densify tăng rất nhanh), thử lần
@@ -83,11 +84,11 @@ for SCENE in "$@"; do
   fi
 
   # train.py in progress bar (tqdm) qua hàng chục nghìn iteration — rất dài nếu
-  # hiện hết ra console/notebook. Redirect toàn bộ ra file log, notebook chỉ
-  # thấy 2 dòng (bắt đầu/kết thúc) mỗi scene. Muốn xem tiến độ lúc đang chạy:
-  # mở 1 cell khác gõ  !tail -n 30 "<LOG_FILE>"
+  # hiện hết ra console/notebook, nên vẫn redirect toàn bộ ra file log. Nhưng
+  # chạy nền (&) rồi định kỳ lấy đúng số "hiện tại/ITERATIONS" cuối cùng trong
+  # log để in 1 dòng gọn ra console — biết đang chạy tới đâu mà không bị spam.
+  # Đổi tần suất bằng PROGRESS_INTERVAL=<giây> (mặc định 60s).
   echo "===== Train 3DGS: $SCENE ($ITERATIONS iterations, sh_degree=$SH_DEGREE, densify_grad_threshold=$DENSIFY_GRAD_THRESHOLD) — log: $LOG_FILE ====="
-  set +e
   python "$GS_REPO/train.py" \
     -s "$SOURCE_DIR" \
     -m "$MODEL_DIR" \
@@ -97,10 +98,22 @@ for SCENE in "$@"; do
     --sh_degree "$SH_DEGREE" \
     --densify_grad_threshold "$DENSIFY_GRAD_THRESHOLD" \
     --resolution "$RESOLUTION" \
-    > "$LOG_FILE" 2>&1
+    > "$LOG_FILE" 2>&1 &
   # Không dùng --eval: ta muốn dùng TOÀN BỘ ảnh train/images/ để train (không
   # giữ lại phần nào làm test nội bộ của repo), vì việc tự đánh giá chất lượng
   # đã làm riêng trên public_set bằng 05_eval_metrics.py.
+  TRAIN_PID=$!
+
+  while kill -0 "$TRAIN_PID" 2>/dev/null; do
+    sleep "${PROGRESS_INTERVAL:-60}"
+    LAST_PROGRESS=$(grep -oE "[0-9]+/${ITERATIONS}" "$LOG_FILE" 2>/dev/null | tail -1)
+    if [[ -n "$LAST_PROGRESS" ]]; then
+      echo "  [$SCENE] tiến độ: $LAST_PROGRESS iterations"
+    fi
+  done
+
+  set +e
+  wait "$TRAIN_PID"
   STATUS=$?
   set -e
 

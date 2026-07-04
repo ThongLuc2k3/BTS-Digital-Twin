@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""PHASE 0 — kiểm định giả thuyết hệ toạ độ (BẮT BUỘC chạy trước khi train hàng loạt).
+"""Sanity-check hệ toạ độ (TUỲ CHỌN — không còn bắt buộc, xem cập nhật dưới).
 
-Bối cảnh (xem KE_HOACH_VONG1.md mục 2 và 4, Dataset/README.md mục 3-4):
-- test_poses.csv của BTC được định nghĩa trong MỘT hệ toạ độ COLMAP nào đó.
-- Khi ta tự chạy COLMAP trên train/images/ của private_set1 (vì 7/8 scene không có
-  sparse dùng được), hệ toạ độ SfM ta tự dựng ra có gauge (scale/rotation/gốc) TÙY Ý
-  — không tự động trùng với hệ mà BTC dùng để tạo test_poses.csv, TRỪ KHI quy trình
-  SfM là xác định (deterministic) và BTC cũng chỉ dùng đúng tập train images để dựng.
-- Scene HCM0249 là scene DUY NHẤT có sẵn sparse "chuẩn" từ BTC để đối chiếu.
+Bối cảnh lịch sử (xem KE_HOACH_VONG1.md mục 2 và 4, Dataset/README.md mục 3):
+bản dataset ban đầu chỉ có 1/13 scene (HCM0249) kèm sparse hợp lệ, nên có rủi ro
+lớn là phải tự chạy COLMAP cho 12 scene còn lại và không chắc hệ toạ độ tự dựng
+có khớp với test_poses.csv hay không — script này được viết để kiểm định đúng
+giả thuyết đó trước khi render hàng loạt.
+
+**Cập nhật 04/07/2026**: BTC đã phát hành lại dataset, sparse hợp lệ ở cả 13/13
+scene — pipeline giờ dùng THẲNG sparse có sẵn (xem `01_run_colmap.py` và
+`common/colmap_runner.py::use_provided_sparse`), không cần tự dựng lại COLMAP
+nữa, nên rủi ro lệch hệ toạ độ giảm hẳn. Script này vẫn giữ lại, hữu ích khi:
+- Muốn đối chiếu/kiểm tra thêm cho chắc trước khi tin tưởng hoàn toàn.
+- Nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó.
 
 Script này: tự chạy COLMAP trên train/images/ của HCM0249, rồi so sánh camera
 centers (projection_center) của các ảnh train với camera centers có sẵn trong
@@ -15,13 +20,9 @@ sparse gốc BTC cung cấp — CÙNG một tập ảnh, nên đây là phép so
 không suy đoán.
 
 Đọc kết quả:
-- "RAW residual" nhỏ (~0, tính theo % đường kính cảnh)  => 2 hệ trùng khớp tự nhiên,
-  KHÔNG cần align  => an toàn dùng COLMAP tự chạy cho toàn bộ scene còn lại và tin
-  tưởng trực tiếp test_poses.csv.
+- "RAW residual" nhỏ (~0, tính theo % đường kính cảnh)  => 2 hệ trùng khớp tự nhiên.
 - "RAW residual" lớn nhưng "ALIGNED residual" (sau Sim3) nhỏ => 2 SfM đều hợp lệ
-  nhưng khác gauge. Sim3 tìm được ở ĐÂY chỉ đúng cho riêng HCM0249 (vì cần biết
-  trước cả 2 hệ toạ độ mới ước lượng được Sim3) — với 7 scene còn lại KHÔNG có gì
-  để ước lượng Sim3 tương ứng => RỦI RO CAO, cần báo BTC ngay (xem mục 4 KE_HOACH).
+  nhưng khác gauge (chỉ còn liên quan nếu dùng --force_own_colmap cho scene nào đó).
 - Cả 2 residual đều lớn => có vấn đề khác (COLMAP thất bại một phần, ảnh thiếu, ...).
 """
 import sys

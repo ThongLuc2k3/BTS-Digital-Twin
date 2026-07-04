@@ -24,6 +24,63 @@ import pycolmap
 from common.logging_utils import FileLog, quiet_pycolmap
 
 
+def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Path) -> None:
+    """undistort_images ghi thẳng vào <dense_dir>/sparse/*.bin (không có "0/"),
+    trong khi graphdeco-inria/gaussian-splatting cần <source>/sparse/0/*.bin —
+    dùng chung cho cả 2 đường (tự chạy COLMAP / dùng thẳng sparse có sẵn)."""
+    pycolmap.undistort_images(
+        output_path=dense_dir,
+        input_path=sparse_dir,
+        image_path=images_dir,
+        output_type="COLMAP",
+    )
+    flat_sparse = dense_dir / "sparse"
+    nested_sparse = flat_sparse / "0"
+    if flat_sparse.exists() and not nested_sparse.exists():
+        tmp = dense_dir / "_sparse_tmp"
+        flat_sparse.rename(tmp)
+        tmp_nested = dense_dir / "sparse"
+        tmp_nested.mkdir(parents=True)
+        tmp.rename(tmp_nested / "0")
+
+
+def use_provided_sparse(images_dir: Path, sparse_dir: Path, workdir: Path) -> dict:
+    """Dùng THẲNG sparse đã có sẵn (do BTC cung cấp) — KHÔNG tự chạy COLMAP.
+
+    Kể từ khi BTC cập nhật lại dataset (xem Dataset/README.md), cả 13/13 scene
+    đều có sparse/0/ hợp lệ, nên bước feature extraction + matching + incremental
+    mapping (vốn tốn thời gian và dễ lỗi nhất) không còn cần thiết cho hầu hết
+    trường hợp — chỉ còn bước undistort (rất nhanh, vài giây tới vài chục giây)
+    để chuyển sang PINHOLE sạch trước khi đưa vào 3D Gaussian Splatting.
+
+    Trả về dict cùng format với run_colmap_scene(), thêm "used_provided_sparse": True.
+    """
+    workdir.mkdir(parents=True, exist_ok=True)
+    log_path = workdir / "colmap.log"
+    log = FileLog(log_path)
+    quiet_pycolmap(log_dir=workdir / "pycolmap_internal_logs")
+
+    rec = pycolmap.Reconstruction(sparse_dir)
+    log.write(f"Dùng sparse có sẵn: {sparse_dir} "
+              f"({rec.num_reg_images()} ảnh, {rec.num_points3D()} điểm) — bỏ qua bước tự chạy COLMAP.")
+
+    dense_dir = workdir / "dense"
+    log.write(f"Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
+    _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir)
+
+    log.write(f"Xong. num_reg_images={rec.num_reg_images()} num_points3D={rec.num_points3D()}")
+    log.close()
+
+    return {
+        "sparse_dir": sparse_dir,
+        "dense_dir": dense_dir,
+        "num_reg_images": rec.num_reg_images(),
+        "num_points3D": rec.num_points3D(),
+        "log_path": log_path,
+        "used_provided_sparse": True,
+    }
+
+
 def run_colmap_scene(
     images_dir: Path,
     workdir: Path,
@@ -115,22 +172,7 @@ def run_colmap_scene(
 
     dense_dir = workdir / "dense"
     log.write(f"[4/4] Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
-    pycolmap.undistort_images(
-        output_path=dense_dir,
-        input_path=sparse_dir,
-        image_path=images_dir,
-        output_type="COLMAP",
-    )
-    # undistort_images ghi thẳng vào <dense_dir>/sparse/*.bin (không có "0/"),
-    # trong khi graphdeco-inria/gaussian-splatting cần <source>/sparse/0/*.bin.
-    flat_sparse = dense_dir / "sparse"
-    nested_sparse = flat_sparse / "0"
-    if flat_sparse.exists() and not nested_sparse.exists():
-        tmp = dense_dir / "_sparse_tmp"
-        flat_sparse.rename(tmp)
-        tmp_nested = dense_dir / "sparse"
-        tmp_nested.mkdir(parents=True)
-        tmp.rename(tmp_nested / "0")
+    _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir)
 
     log.write(f"Xong. num_reg_images={best_rec.num_reg_images()} num_points3D={best_rec.num_points3D()}")
     log.close()
@@ -141,4 +183,5 @@ def run_colmap_scene(
         "num_reg_images": best_rec.num_reg_images(),
         "num_points3D": best_rec.num_points3D(),
         "log_path": log_path,
+        "used_provided_sparse": False,
     }

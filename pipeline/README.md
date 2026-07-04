@@ -27,18 +27,23 @@ export GS_REPO=$(pwd)/gaussian-splatting   # cần export lại mỗi lần mở
 
 ## 1. Thứ tự chạy (đúng theo `KE_HOACH_VONG1.md`)
 
-### Bước 0 — BẮT BUỘC: kiểm định hệ toạ độ trước khi làm gì khác
+> **Cập nhật 04/07/2026**: BTC đã phát hành lại dataset, sparse `sparse/0/` giờ
+> hợp lệ ở cả 13/13 scene — `01_run_colmap.py` mặc định **dùng thẳng sparse có
+> sẵn** (chỉ undistort, rất nhanh), không tự chạy lại COLMAP nữa. Bước "Phase 0"
+> dưới đây giờ là sanity-check tuỳ chọn, không còn bắt buộc chặn tiến độ.
+
+### Bước 0 (tuỳ chọn) — Sanity-check hệ toạ độ nếu còn nghi ngờ
 
 ```bash
 cd scripts
 python 02_validate_frame.py
 ```
 
-Đọc kỹ phần "KẾT LUẬN" ở cuối output trước khi đi tiếp — đây là rủi ro kỹ thuật
-lớn nhất của cả vòng thi (xem `Dataset/README.md` mục 5 và `KE_HOACH_VONG1.md`
-mục 2, điểm 5).
+So sánh COLMAP tự chạy vs sparse có sẵn của `HCM0249` — chỉ cần chạy nếu muốn
+đối chiếu thêm; không còn là điều kiện bắt buộc trước khi làm tiếp (xem
+`KE_HOACH_VONG1.md` mục 2, điểm 5).
 
-### Bước 1 — Chạy COLMAP cho từng scene
+### Bước 1 — Chuẩn bị dữ liệu COLMAP cho từng scene (dùng sparse có sẵn)
 
 ```bash
 python 01_run_colmap.py --scene HCM0181            # thử 1 scene public trước
@@ -46,10 +51,12 @@ python 01_run_colmap.py --all --split public        # cả 5 scene public
 python 01_run_colmap.py --all --split private        # cả 8 scene private
 ```
 
-Output: `pipeline/work/<scene>/colmap/dense/{images/,sparse/0/}`. Nếu tỉ lệ ảnh
-đăng ký được (`num_reg_images`) thấp, thử thêm `--matching exhaustive` (chậm hơn
-nhưng chắc hơn, đáng thử vì exhaustive an toàn hơn cho ảnh drone không hoàn toàn
-tuần tự).
+Mặc định tự nhận diện sparse hợp lệ và chỉ undistort (vài giây tới vài chục
+giây/scene). Chỉ khi 1 scene cụ thể thiếu/hỏng sparse (hoặc muốn ép chạy lại để
+đối chiếu) mới cần thêm `--force_own_colmap` (khi đó có thể thêm `--matching
+exhaustive` nếu tỉ lệ đăng ký ảnh thấp).
+
+Output: `pipeline/work/<scene>/colmap/dense/{images/,sparse/0/}`.
 
 ### Bước 2 — Train 3D Gaussian Splatting
 

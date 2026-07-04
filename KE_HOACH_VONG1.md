@@ -17,18 +17,19 @@
 
 1. **`public_set` (5 scene) có ảnh test thật** → dùng để tự luyện + tự chấm PSNR/SSIM/LPIPS trước khi đụng vào private set.
 2. **`private_set1` (8 scene) không có ảnh test** — chỉ có `test_poses.csv`. Đây là tập phải nộp bài.
-3. ⚠️ **Thư mục `sparse/0/` (COLMAP có sẵn) chỉ thực sự dùng được ở đúng 1/8 scene private (`HCM0249`)**. 2 scene khác có file 0-byte (rác), 3 scene không có thư mục sparse. → **Không thiết kế pipeline phụ thuộc sparse có sẵn** — phải tự chạy COLMAP cho gần như toàn bộ 13 scene.
-4. Ảnh đã downscale sẵn về **1320×989**, không có EXIF/GPS → SfM phải chạy thuần thị giác.
-5. **Rủi ro kỹ thuật lớn nhất của cả vòng thi**: pose trong `test_poses.csv` phải nằm **cùng hệ toạ độ (gauge)** với model 3D mà ta tự dựng từ `train/images/`. Nếu tự chạy COLMAP riêng cho ảnh train và hệ toạ độ ra khác với hệ mà BTC dùng để sinh `test_poses.csv`, ảnh render sẽ sai hoàn toàn (nhìn "đúng scene, sai góc") dù model 3D có đẹp đến đâu. Đây là điều **bắt buộc phải kiểm chứng trước**, không phải giả định.
-6. Local machine hiện tại: GPU GTX 1650 4GB — **không đủ** để train 3DGS chất lượng tốt cho scene lớn. Cần thuê GPU ngoài (Colab Pro/Kaggle/RunPod/Vast.ai — 1×3090/4090/A4000 trở lên) cho bước train thật.
+3. ✅ **Cập nhật 04/07/2026: BTC đã phát hành lại dataset, sparse `sparse/0/` giờ hợp lệ ở CẢ 13/13 scene** (trước đó chỉ 1/13 dùng được, đã báo và BTC vá lỗi — xem lịch sử ở `Dataset/README.md` mục 3). → **Pipeline nên dùng THẲNG sparse có sẵn cho mọi scene**, không cần tự chạy lại COLMAP nữa — tiết kiệm rất nhiều thời gian GPU và giảm hẳn rủi ro lỗi (OOM, đăng ký thiếu ảnh...) ở bước SfM.
+4. Ảnh đã downscale sẵn về **1320×989**, không có EXIF/GPS.
+5. **Rủi ro hệ toạ độ (coordinate frame) giờ giảm nhiều** so với lúc dataset còn lỗi: vì dùng thẳng sparse do chính BTC tạo, pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó. Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` và so PSNR với ảnh thật trước khi tin tưởng hoàn toàn cho private set (xem Tuần 0 bên dưới) — nhưng không còn là thực nghiệm "bắt buộc phải qua mới dám làm tiếp" như trước, mà là 1 bước sanity-check gọn.
+6. Local machine hiện tại: GPU GTX 1650 4GB — **không đủ** để train 3DGS chất lượng tốt cho scene lớn. Cần thuê GPU ngoài (Colab Pro/Kaggle/RunPod/Vast.ai — 1×3090/4090/A4000 trở lên) cho bước train thật. Đã gặp thực tế: train 3DGS có thể bị **CUDA out of memory** giữa chừng ở scene nhiều chi tiết mảnh (khung thép/dây cáp BTS khiến densify sinh rất nhiều Gaussian) — xem `pipeline/scripts/03_train_3dgs.sh` đã có sẵn cờ giảm tải (`SH_DEGREE`, `DENSIFY_GRAD_THRESHOLD`, `RESOLUTION`) và tự lưu checkpoint giữa chừng.
 
 ## 3. Baseline được đề xuất (đơn giản, đủ để qua vòng 1)
 
 Không cần ensemble nhiều model, không cần DroneSplat/LOBE-GS chuyên biệt ngay từ đầu. Baseline 1 pipeline thống nhất áp dụng cho cả 13 scene:
 
 ```
-train/images/  ──► COLMAP (feature extract + exhaustive/sequential match + mapper)
-                     │  → poses + sparse point cloud (TỰ CHẠY, không dùng sparse có sẵn)
+train/images/ + sparse/0/ có sẵn ──► undistort sang PINHOLE sạch (pycolmap, rất nhanh)
+                     │  (chỉ tự chạy lại feature extract+match+mapper nếu 1 scene nào đó
+                     │   thiếu/hỏng sparse — không còn là bước mặc định nữa)
                      ▼
                  3D Gaussian Splatting  (dùng repo có sẵn, KHÔNG tự viết lại từ đầu:
                                           gsplat / nerfstudio "splatfacto", hoặc repo gốc
@@ -48,26 +49,30 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 
 | # | Vấn đề | Cách xử lý |
 |---|---|---|
-| 1 | Hệ toạ độ COLMAP tự chạy có khớp với `test_poses.csv` không? | **Thực nghiệm bắt buộc** (chi tiết Phase 0 bên dưới), dùng scene `HCM0249` (có sparse thật để đối chiếu) + `public_set` (có ảnh test thật để tính PSNR). |
-| 2 | 7/8 scene private thiếu sparse hợp lệ — có phải lỗi đóng gói của BTC? | Báo qua kênh hỗ trợ chính thức càng sớm càng tốt (không chờ), kèm bằng chứng (kích thước file 0 byte). Có thể BTC sẽ phát hành bản data vá lỗi. |
+| 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | Đã giảm rủi ro nhiều từ khi dùng thẳng sparse của BTC (không tự dựng lại) — vẫn nên **sanity-check** bằng cách render 1 scene `public_set` và so PSNR với ảnh thật (Tuần 0) trước khi tin tưởng cho private set, nhưng không còn là điều kiện chặn cứng. |
+| ~~2~~ | ~~7/8 scene private thiếu sparse hợp lệ~~ | **Đã xử lý**: BTC xác nhận là lỗi đóng gói và đã phát hành lại dataset 04/07/2026, sparse hợp lệ ở cả 13/13 scene. |
 | 3 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | Đề bài viết "tên file theo `image_name`" nhưng ví dụ cấu trúc lại dùng `0001.png`. Hỏi BTC. Mặc định an toàn: dùng **nguyên văn chuỗi `image_name`** làm tên file (kể cả đuôi `.JPG`) vì đó là câu chữ literal của đề bài; làm script cấu hình được để đổi nhanh nếu BTC trả lời khác. |
 | 4 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | Dữ liệu thật không hề có tên `scene_001`. Gần như chắc chắn phải dùng **tên thư mục thật của từng scene** trong private_set1. Hỏi BTC nếu còn nghi ngờ, nhưng cứ code theo tên thật trước. |
 | 5 | PSNR/SSIM/LPIPS tính trên toàn ảnh hay loại trừ nền/sky? | Không ảnh hưởng cách nộp bài, chỉ ảnh hưởng cách ta tự đánh giá nội bộ trên `public_set`. Cứ tính trên toàn ảnh trước, không cần chờ trả lời mới bắt đầu. |
 | 6 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | Hỏi BTC qua kênh chính thức, làm song song trong lúc chờ trả lời (không phải rủi ro chặn tiến độ). |
 
-**Nguyên tắc:** chỉ có câu hỏi #1 là chặn tiến độ thật sự (blocking) — phải trả lời bằng thực nghiệm trước khi render hàng loạt cho private set. Các câu còn lại có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
+**Nguyên tắc:** không còn câu hỏi nào thực sự chặn tiến độ (blocking) như trước — có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
 
 ## 5. Kế hoạch theo tuần (04/07 → 30/07/2026)
 
-### Tuần 0 — Phase 0: Dựng khung + kiểm định giả thuyết hệ toạ độ (04/07 – 06/07)
+### Tuần 0 — Dựng khung + sanity-check hệ toạ độ (04/07 – 06/07)
 
-- [ ] Cài môi trường: COLMAP (CLI hoặc pycolmap), PyTorch + CUDA, `gsplat` hoặc `nerfstudio` (splatfacto), `lpips`/`scikit-image` để tự tính metric.
-- [ ] Viết script đọc `test_poses.csv` → build camera intrinsics/extrinsics (chú ý quy ước quaternion COLMAP là world-to-camera: R,t biến điểm world → camera; cần R^T, -R^T·t nếu công cụ NVS cần camera-to-world).
-- [ ] **Thực nghiệm quyết định (ưu tiên #1)**: lấy `private_set1/HCM0249/train/images/` (240 ảnh, có sparse thật đi kèm) → tự chạy COLMAP từ đầu trên đúng tập ảnh này → so sánh pose từng ảnh train ước lượng được với pose gốc trong `sparse/0/images.bin` có sẵn (so sau khi align bằng phép biến đổi Sim3/Umeyama giữa 2 tập camera centers).
-  - Nếu residual nhỏ (2 hệ toạ độ trùng khớp, hoặc chỉ lệch một phép Sim3 cố định dễ ước lượng) → **an toàn**, tự chạy COLMAP cho mọi scene còn lại, tin tưởng `test_poses.csv` cùng hệ.
-  - Nếu lệch nhiều/vô định hình → cần dùng chính phép Sim3 ước lượng được để **align** kết quả COLMAP tự chạy của các scene khác vào "hệ chuẩn" trước khi render (rủi ro cao hơn, cần bàn thêm/hỏi BTC).
-- [ ] Thực nghiệm chéo kiểm tra thêm trên `public_set` (1 scene, ví dụ `hcm0031` vì nhỏ nhất – 200 ảnh): chạy COLMAP + 3DGS nhanh (ít iteration) chỉ trên `train/images/`, render tại pose trong `test_poses.csv`, so PSNR với ảnh thật trong `test/images/`. PSNR hợp lý (không phải ảnh nhiễu loạn hoàn toàn) = xác nhận thêm giả thuyết hệ toạ độ đúng.
-- [ ] Gửi câu hỏi #2, #3, #4, #6 (mục 4) cho BTC qua kênh hỗ trợ chính thức ngay trong tuần này.
+> Đã đơn giản hoá nhiều so với bản kế hoạch gốc — vì BTC đã phát hành lại dataset
+> với sparse hợp lệ ở cả 13/13 scene (04/07/2026), không cần thực nghiệm Sim3/Umeyama
+> đối chiếu COLMAP tự chạy vs sparse gốc như trước nữa (script `02_validate_frame.py`
+> vẫn giữ lại trong code, dùng khi cần đối chiếu/nghi ngờ 1 scene cụ thể).
+
+- [ ] Cài môi trường: `pycolmap`, PyTorch + CUDA, clone `graphdeco-inria/gaussian-splatting`, `lpips`/`scikit-image` để tự tính metric (xem `pipeline/README.md`).
+- [ ] Chạy `01_run_colmap.py` cho 1 scene `public_set` (vd `hcm0031`/`HCM0204`, đã có sparse sẵn) — script tự nhận diện sparse hợp lệ và bỏ qua bước tự chạy COLMAP, chỉ undistort (nhanh).
+- [ ] **Sanity-check chính**: train 3DGS (`03_train_3dgs.sh`) + render (`04_render_test_poses.py`) + tính PSNR/SSIM (`05_eval_metrics.py`) trên đúng scene `public_set` đó, so với `test/images/` thật.
+  - PSNR hợp lý (không phải ảnh nhiễu loạn hoàn toàn) → xác nhận sparse của BTC + `test_poses.csv` cùng hệ toạ độ, yên tâm áp dụng cho private set.
+  - PSNR quá tệ/ảnh sai hoàn toàn → mới cần chạy sâu hơn `02_validate_frame.py` hoặc hỏi BTC.
+- [ ] Gửi câu hỏi #3, #4, #5, #6 (mục 4) cho BTC qua kênh hỗ trợ chính thức ngay trong tuần này.
 
 ### Tuần 1 — Baseline đầy đủ trên public_set (07/07 – 12/07)
 
@@ -78,7 +83,7 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 
 ### Tuần 2 — Áp dụng cho private_set1 + nộp bài đầu tiên càng sớm càng tốt (13/07 – 19/07)
 
-- [ ] Chạy pipeline cho toàn bộ 8 scene của `private_set1` (dùng sparse có sẵn cho `HCM0249` nếu thực nghiệm Phase 0 xác nhận an toàn/nhanh hơn; 7 scene còn lại tự chạy COLMAP từ đầu).
+- [ ] Chạy pipeline cho toàn bộ 8 scene của `private_set1` (đều dùng thẳng sparse có sẵn — `01_run_colmap.py` tự nhận diện, chỉ cần `--force_own_colmap` nếu nghi ngờ 1 scene cụ thể nào đó).
 - [ ] Viết `check_submission.py`: kiểm tra tự động — đủ 8 thư mục scene, đủ số ảnh đúng bằng số dòng trong `test_poses.csv` từng scene, đúng kích thước width×height từng ảnh, đúng tên file, không thiếu/thừa.
 - [ ] Đóng gói `submission_round1.zip` và **nộp thử sớm nhất có thể** trong tuần này (không đợi tới hạn) để xác nhận: hệ thống chấm chấp nhận format, không lỗi gì bất ngờ. Nhớ giới hạn 5 lần/ngày + chờ 600s giữa các lần.
 
@@ -99,7 +104,7 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 | Vai trò | Việc chính | Sản phẩm bàn giao |
 |---|---|---|
 | CV core | Train 3DGS từng scene, render pose test, tối ưu chất lượng | Model weights + ảnh render/scene |
-| 3D/Graphics | Chạy & kiểm chứng COLMAP, thực nghiệm Phase 0 (kiểm định hệ toạ độ), chuẩn hoá input | Sparse reconstruction đã verify/scene + báo cáo thực nghiệm hệ toạ độ |
+| 3D/Graphics | Kiểm tra chất lượng sparse có sẵn từng scene, chuẩn hoá input, chạy `02_validate_frame.py`/đối chiếu khi nghi ngờ | Xác nhận sparse dùng được/scene + báo cáo nếu phát hiện bất thường |
 | Tổng quát/IT | `eval_metrics.py`, `check_submission.py`, đóng gói zip, theo dõi giới hạn nộp bài (5 lần/ngày, 600s), liên hệ BTC các câu hỏi mở | Script chấm điểm nội bộ + zip nộp bài hợp lệ |
 
 ## 7. Checklist trước mỗi lần nộp

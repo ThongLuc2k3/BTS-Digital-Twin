@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Chạy COLMAP cho 1 scene (hoặc toàn bộ scene) bằng pycolmap.
+"""Chuẩn bị dữ liệu COLMAP (sparse + ảnh undistort PINHOLE) cho 1 scene hoặc
+toàn bộ scene, sẵn sàng đưa vào train 3D Gaussian Splatting.
+
+Từ khi BTC cập nhật lại dataset (xem Dataset/README.md), CẢ 13/13 scene đều có
+sẵn sparse hợp lệ — mặc định script này DÙNG THẲNG sparse có sẵn (chỉ undistort,
+rất nhanh), KHÔNG tự chạy lại COLMAP nữa. Chỉ tự chạy COLMAP khi:
+  - Scene không có sparse hợp lệ (`has_valid_provided_sparse()` = False), hoặc
+  - Người dùng ép buộc qua --force_own_colmap (vd để đối chiếu/nghi ngờ dữ liệu).
 
 Ví dụ:
     python 01_run_colmap.py --scene HCM0181
-    python 01_run_colmap.py --scene HCM0249 --matching exhaustive
     python 01_run_colmap.py --all --split public
+    python 01_run_colmap.py --scene HCM0249 --force_own_colmap --matching exhaustive
 
 Output: pipeline/work/<scene>/colmap/dense/{images/, sparse/0/}
         -> đây chính là thư mục để đưa vào train.py của gaussian-splatting.
@@ -15,14 +22,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.scenes import Scene, all_scenes, get_scene
-from common.colmap_runner import run_colmap_scene
+from common.colmap_runner import run_colmap_scene, use_provided_sparse
 from common.poses import representative_intrinsics
 
 WORK_ROOT = Path(__file__).resolve().parents[1] / "work"
 
 
-def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool, overwrite: bool):
+def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool,
+                   overwrite: bool, force_own_colmap: bool):
     workdir = WORK_ROOT / scene.name / "colmap"
+
+    if scene.has_valid_provided_sparse() and not force_own_colmap:
+        print(f"===== {scene.name} ({scene.split}) — dùng sparse có sẵn (bỏ qua tự chạy COLMAP) =====")
+        result = use_provided_sparse(
+            images_dir=scene.train_images_dir,
+            sparse_dir=scene.provided_sparse_dir,
+            workdir=workdir,
+        )
+        n_total = len(list(scene.train_images_dir.glob("*")))
+        print(f"-> {result['num_reg_images']}/{n_total} ảnh, {result['num_points3D']} điểm 3D (từ sparse có sẵn). "
+              f"Dense: {result['dense_dir']} | Log: {result['log_path']}")
+        return result
 
     camera_params_prior = None
     if use_prior and scene.test_poses_csv.exists():
@@ -32,7 +52,7 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
         elif camera_model == "PINHOLE":
             camera_params_prior = f"{fx},{fx},{cx},{cy}"
 
-    print(f"===== {scene.name} ({scene.split}) — COLMAP ({matching}, {camera_model}) =====")
+    print(f"===== {scene.name} ({scene.split}) — tự chạy COLMAP ({matching}, {camera_model}) =====")
     result = run_colmap_scene(
         images_dir=scene.train_images_dir,
         workdir=workdir,
@@ -57,9 +77,12 @@ def main():
     g.add_argument("--all", action="store_true", help="Chạy toàn bộ scene")
     ap.add_argument("--split", choices=["public", "private"], default=None,
                      help="Chỉ dùng với --all, giới hạn public_set hoặc private_set1")
-    ap.add_argument("--matching", default="sequential", choices=["sequential", "exhaustive"])
+    ap.add_argument("--force_own_colmap", action="store_true",
+                     help="Ép tự chạy COLMAP dù scene đã có sparse hợp lệ (vd để đối chiếu/nghi ngờ dữ liệu)")
+    ap.add_argument("--matching", default="sequential", choices=["sequential", "exhaustive"],
+                     help="Chỉ áp dụng khi thực sự tự chạy COLMAP")
     ap.add_argument("--camera_model", default="SIMPLE_RADIAL",
-                     help="SIMPLE_RADIAL (khớp dữ liệu gốc, có méo nhẹ) hoặc PINHOLE")
+                     help="SIMPLE_RADIAL (khớp dữ liệu gốc, có méo nhẹ) hoặc PINHOLE — chỉ áp dụng khi tự chạy COLMAP")
     ap.add_argument("--no_prior", action="store_true",
                      help="Không dùng fx/cx/cy từ test_poses.csv làm prior, để COLMAP tự đoán từ EXIF/heuristic")
     ap.add_argument("--overwrite", action="store_true", help="Chạy lại từ đầu, xoá database.db cũ")
@@ -71,7 +94,8 @@ def main():
         scenes = all_scenes(args.split)
 
     for scene in scenes:
-        process_scene(scene, args.matching, args.camera_model, not args.no_prior, args.overwrite)
+        process_scene(scene, args.matching, args.camera_model, not args.no_prior,
+                      args.overwrite, args.force_own_colmap)
 
 
 if __name__ == "__main__":

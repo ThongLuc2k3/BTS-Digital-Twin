@@ -28,14 +28,15 @@ WORK_ROOT = Path(__file__).resolve().parents[1] / "work"
 
 
 def _report_missing_images(scene: Scene, result: dict) -> None:
-    """In rõ TÊN FILE nào có pose trong sparse nhưng không có ảnh thật trên đĩa —
-    đây là đặc điểm bình thường của dữ liệu (sparse có thể dựng từ tập ảnh gốc
-    lớn hơn train/images/ đã phát hành), KHÔNG phải lỗi COLMAP hay lỗi tải dữ
-    liệu, nên tách riêng khỏi cảnh báo "tỉ lệ đăng ký thấp"."""
+    """Chỉ in SỐ LƯỢNG ra console (tránh spam khi thiếu hàng trăm ảnh) — đây là
+    đặc điểm bình thường của dữ liệu (sparse có thể dựng từ tập ảnh gốc lớn hơn
+    train/images/ đã phát hành), KHÔNG phải lỗi COLMAP hay lỗi tải dữ liệu, nên
+    tách riêng khỏi cảnh báo "tỉ lệ đăng ký thấp". Tên file cụ thể đã có sẵn
+    trong log_path (ghi bởi common/colmap_runner.py), không cần in lại ở đây."""
     missing = result.get("missing_images") or []
     if missing:
         print(f"[LƯU Ý] {scene.name}: {len(missing)} ảnh có pose trong sparse nhưng không có file "
-              f"trong train/images/ (đã tự loại ra, không phải lỗi): {missing}")
+              f"trong train/images/ (đã tự loại ra, không phải lỗi) — danh sách tên file: {result['log_path']}")
 
 
 def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool,

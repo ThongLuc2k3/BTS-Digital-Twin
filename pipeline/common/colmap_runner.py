@@ -45,24 +45,40 @@ def _find_missing_images(rec: "pycolmap.Reconstruction", images_dir: Path) -> tu
 
 
 def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Path,
-                               rec: "pycolmap.Reconstruction", log: FileLog) -> list[str]:
+                               rec: "pycolmap.Reconstruction", log: FileLog,
+                               workdir: Path) -> list[str]:
     """undistort_images ghi thẳng vào <dense_dir>/sparse/*.bin (không có "0/"),
     trong khi graphdeco-inria/gaussian-splatting cần <source>/sparse/0/*.bin —
     dùng chung cho cả 2 đường (tự chạy COLMAP / dùng thẳng sparse có sẵn).
 
+    QUAN TRỌNG: tham số `image_names` của pycolmap.undistort_images chỉ quyết
+    định ảnh nào được COPY PIXEL sang dense/images/ — nó KHÔNG tự xoá ảnh thiếu
+    khỏi model sparse output (dense/sparse/0/images.bin vẫn có thể còn tham
+    chiếu ảnh đó), khiến train.py vẫn cố mở file và crash muộn hơn. Nên ở đây
+    phải XOÁ HẲN ảnh thiếu khỏi reconstruction (deregister_frame) rồi ghi ra
+    1 bản sparse đã lọc sạch, dùng bản đó làm input cho undistort_images.
+
     Trả về danh sách tên ảnh bị thiếu (rỗng nếu đủ) để caller báo cáo lại.
     """
     valid_names, missing_names = _find_missing_images(rec, images_dir)
+    input_sparse_dir = sparse_dir
+
     if missing_names:
         log.write(f"[CẢNH BÁO] {len(missing_names)}/{len(valid_names) + len(missing_names)} ảnh "
-                  f"có pose trong sparse nhưng KHÔNG có file trong {images_dir} — bỏ qua các ảnh "
-                  f"này (không undistort), không phải lỗi COLMAP: {missing_names}")
+                  f"có pose trong sparse nhưng KHÔNG có file trong {images_dir} — xoá khỏi "
+                  f"reconstruction trước khi undistort, không phải lỗi COLMAP: {missing_names}")
+        missing_set = set(missing_names)
+        for image in list(rec.images.values()):
+            if image.name in missing_set:
+                rec.deregister_frame(image.frame_id)
+        input_sparse_dir = workdir / "_sparse_filtered"
+        input_sparse_dir.mkdir(parents=True, exist_ok=True)
+        rec.write_binary(input_sparse_dir)
 
     pycolmap.undistort_images(
         output_path=dense_dir,
-        input_path=sparse_dir,
+        input_path=input_sparse_dir,
         image_path=images_dir,
-        image_names=valid_names,
         output_type="COLMAP",
     )
     flat_sparse = dense_dir / "sparse"
@@ -73,6 +89,24 @@ def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Pat
         tmp_nested = dense_dir / "sparse"
         tmp_nested.mkdir(parents=True)
         tmp.rename(tmp_nested / "0")
+
+    # Tự kiểm tra lại: đảm bảo KHÔNG còn ảnh nào trong sparse cuối cùng mà thiếu
+    # file thật — thà báo lỗi rõ ràng ngay tại đây còn hơn để train.py crash sau
+    # khi đã tốn thời gian train.
+    final_rec = pycolmap.Reconstruction(dense_dir / "sparse" / "0")
+    dense_images_dir = dense_dir / "images"
+    still_missing = sorted(
+        image.name for image in final_rec.images.values()
+        if not (dense_images_dir / image.name).exists()
+    )
+    if still_missing:
+        raise RuntimeError(
+            f"Sau khi undistort, sparse cuối cùng ({dense_dir}/sparse/0) vẫn còn "
+            f"{len(still_missing)} ảnh thiếu file thật trong {dense_images_dir}: "
+            f"{still_missing}. Cần báo lỗi này thay vì để train.py crash — kiểm tra "
+            f"lại thủ công."
+        )
+
     return missing_names
 
 
@@ -99,21 +133,27 @@ def use_provided_sparse(images_dir: Path, sparse_dir: Path, workdir: Path,
     quiet_pycolmap(log_dir=workdir / "pycolmap_internal_logs")
 
     rec = pycolmap.Reconstruction(sparse_dir)
+    num_points3D = rec.num_points3D()
     log.write(f"Dùng sparse có sẵn: {sparse_dir} "
-              f"({rec.num_reg_images()} ảnh, {rec.num_points3D()} điểm) — bỏ qua bước tự chạy COLMAP.")
+              f"({rec.num_reg_images()} ảnh, {num_points3D} điểm) — bỏ qua bước tự chạy COLMAP.")
 
     dense_dir = workdir / "dense"
     log.write(f"Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
-    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, rec, log)
+    # Chốt số liệu TRƯỚC khi gọi hàm dưới đây — nó sẽ sửa trực tiếp lên `rec`
+    # (xoá ảnh thiếu qua deregister_frame), nên rec.num_reg_images() sau lời gọi
+    # đã tự giảm sẵn rồi, không được trừ thêm lần nữa.
+    num_reg_images_before = rec.num_reg_images()
+    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, rec, log, workdir)
+    num_reg_images = num_reg_images_before - len(missing_images)
 
-    log.write(f"Xong. num_reg_images={rec.num_reg_images() - len(missing_images)} num_points3D={rec.num_points3D()}")
+    log.write(f"Xong. num_reg_images={num_reg_images} num_points3D={num_points3D}")
     log.close()
 
     return {
         "sparse_dir": sparse_dir,
         "dense_dir": dense_dir,
-        "num_reg_images": rec.num_reg_images() - len(missing_images),
-        "num_points3D": rec.num_points3D(),
+        "num_reg_images": num_reg_images,
+        "num_points3D": num_points3D,
         "log_path": log_path,
         "used_provided_sparse": True,
         "missing_images": missing_images,
@@ -213,19 +253,25 @@ def run_colmap_scene(
         log.write(f"[CẢNH BÁO] tách {len(recs)} model rời rạc: {sizes}")
 
     sparse_dir = sparse_root / str(best_idx)
+    num_points3D = best_rec.num_points3D()
 
     dense_dir = workdir / "dense"
     log.write(f"[4/4] Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
-    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, best_rec, log)
+    # Chốt số liệu TRƯỚC khi gọi hàm dưới đây — nó sẽ sửa trực tiếp lên `best_rec`
+    # (xoá ảnh thiếu qua deregister_frame), nên num_reg_images() sau đó đã tự
+    # giảm sẵn rồi, không được trừ thêm lần nữa.
+    num_reg_images_before = best_rec.num_reg_images()
+    missing_images = _undistort_and_fix_layout(sparse_dir, images_dir, dense_dir, best_rec, log, workdir)
+    num_reg_images = num_reg_images_before - len(missing_images)
 
-    log.write(f"Xong. num_reg_images={best_rec.num_reg_images() - len(missing_images)} num_points3D={best_rec.num_points3D()}")
+    log.write(f"Xong. num_reg_images={num_reg_images} num_points3D={num_points3D}")
     log.close()
 
     return {
         "sparse_dir": sparse_dir,
         "dense_dir": dense_dir,
-        "num_reg_images": best_rec.num_reg_images() - len(missing_images),
-        "num_points3D": best_rec.num_points3D(),
+        "num_reg_images": num_reg_images,
+        "num_points3D": num_points3D,
         "log_path": log_path,
         "used_provided_sparse": False,
         "missing_images": missing_images,

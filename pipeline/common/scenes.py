@@ -3,12 +3,22 @@
 Tên scene lấy đúng theo tên thư mục thật trên đĩa (đã kiểm tra thủ công, xem
 Dataset/README.md) — KHÔNG dùng tên minh hoạ "scene_001" trong đề bài.
 Lưu ý 2 scene public dùng chữ thường (hcm0031, hcm0034), phân biệt hoa/thường trên Linux.
+
+Đường dẫn dataset ưu tiên lấy từ biến môi trường BTS_DATASET_ROOT nếu có — cần
+thiết khi code và dataset KHÔNG nằm chung 1 thư mục gốc (vd trên Kaggle: code lấy
+từ git clone, dataset tải riêng từ Google Drive, 2 nơi khác gốc nhau nên không thể
+suy ra bằng "đi lên N cấp từ vị trí file code" như lúc chạy local).
 """
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DATASET_ROOT = REPO_ROOT / "Dataset" / "VAI_NVS_DATA" / "phase1"
+_env_root = os.environ.get("BTS_DATASET_ROOT")
+if _env_root:
+    DATASET_ROOT = Path(_env_root)
+else:
+    REPO_ROOT = Path(__file__).resolve().parents[2]
+    DATASET_ROOT = REPO_ROOT / "Dataset" / "VAI_NVS_DATA" / "phase1"
 
 PUBLIC_SCENES = ["HCM0181", "HCM0193", "HCM0204", "hcm0031", "hcm0034"]
 PRIVATE_SCENES = [

@@ -2,15 +2,17 @@
 """Sanity-check hệ toạ độ (TUỲ CHỌN — không còn bắt buộc, xem cập nhật dưới).
 
 Bối cảnh lịch sử (xem KE_HOACH_VONG1.md mục 2 và 4, Dataset/README.md mục 3):
-bản dataset ban đầu chỉ có 1/13 scene (HCM0249) kèm sparse hợp lệ, nên có rủi ro
-lớn là phải tự chạy COLMAP cho 12 scene còn lại và không chắc hệ toạ độ tự dựng
-có khớp với test_poses.csv hay không — script này được viết để kiểm định đúng
-giả thuyết đó trước khi render hàng loạt.
+lần kiểm tra dataset ban đầu ở máy local (do tải/giải nén thiếu sót, không phải
+lỗi từ BTC) chỉ thấy 1/13 scene (HCM0249) kèm sparse hợp lệ, nên có rủi ro lớn
+là phải tự chạy COLMAP cho 12 scene còn lại và không chắc hệ toạ độ tự dựng có
+khớp với test_poses.csv hay không — script này được viết để kiểm định đúng giả
+thuyết đó trước khi render hàng loạt.
 
-**Cập nhật 04/07/2026**: BTC đã phát hành lại dataset, sparse hợp lệ ở cả 13/13
-scene — pipeline giờ dùng THẲNG sparse có sẵn (xem `01_run_colmap.py` và
-`common/colmap_runner.py::use_provided_sparse`), không cần tự dựng lại COLMAP
-nữa, nên rủi ro lệch hệ toạ độ giảm hẳn. Script này vẫn giữ lại, hữu ích khi:
+**Cập nhật 05/07/2026**: sau khi tải/giải nén lại đầy đủ, xác nhận dataset gốc
+vốn đã có sparse hợp lệ ở cả 13/13 scene từ đầu — pipeline giờ dùng THẲNG sparse
+có sẵn (xem `01_run_colmap.py` và `common/colmap_runner.py::use_provided_sparse`),
+không cần tự dựng lại COLMAP nữa, nên rủi ro lệch hệ toạ độ giảm hẳn. Script này
+vẫn giữ lại, hữu ích khi:
 - Muốn đối chiếu/kiểm tra thêm cho chắc trước khi tin tưởng hoàn toàn.
 - Nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó.
 

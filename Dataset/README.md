@@ -4,16 +4,19 @@ Tài liệu này mô tả **chính xác những gì thực sự nằm trong thư
 
 ## 0. Tóm tắt nhanh
 
-> **Cập nhật 04/07/2026**: BTC đã phát hành lại dataset, vá lỗi đóng gói sparse mô
-> tả ở bản trước của tài liệu này — xem mục 3 để biết chi tiết. Toàn bộ số liệu
-> dưới đây đã kiểm tra lại trên dữ liệu mới nhất.
+> **Cập nhật 05/07/2026**: bản kiểm tra trước đó của tài liệu này (04/07) từng ghi
+> nhận sparse chỉ hợp lệ ở 1/13 scene, nghi là lỗi đóng gói của BTC. Sau khi tải/
+> giải nén lại đầy đủ, xác nhận **dataset gốc trên Google Drive vốn đã có sparse
+> hợp lệ ở cả 13/13 scene từ đầu** — bản thiếu trước đó là do quá trình tải/giải
+> nén về máy cục bộ bị thiếu sót, KHÔNG phải lỗi từ phía BTC. Xem mục 3 để biết
+> chi tiết. Toàn bộ số liệu dưới đây đã kiểm tra lại trên dữ liệu đầy đủ.
 
-- Tổng dung lượng: **~3.2 GB** (`VAI_NVS_DATA/`, tăng nhiều so với bản trước ~948MB
-  vì giờ có kèm sparse đầy đủ cho mọi scene), gồm 2 tập: `public_set` (5 scene) và
-  `private_set1` (8 scene) → **13 scene** tất cả.
+- Tổng dung lượng: **~3.2 GB** (`VAI_NVS_DATA/`, tăng nhiều so với lần đếm thiếu
+  trước đó ~948MB vì giờ có kèm sparse đầy đủ cho mọi scene), gồm 2 tập:
+  `public_set` (5 scene) và `private_set1` (8 scene) → **13 scene** tất cả.
 - Ảnh đã bị **downscale 1/4 so với ảnh gốc** (ghi rõ trong mỗi `README.txt`), độ phân giải quan sát được là **1320×989** cho toàn bộ scene đã kiểm tra (train lẫn test).
 - **EXIF đã bị xóa** khỏi ảnh (không có GPS, không có thông tin máy bay).
-- ✅ **`sparse/0/` (kết quả COLMAP) giờ có dữ liệu hợp lệ ở CẢ 13/13 scene** (cả `public_set` lẫn `private_set1`) — khác hẳn bản dataset trước (chỉ 1/13 scene dùng được, xem mục 3). Pipeline nên **dùng thẳng sparse có sẵn**, không cần tự chạy lại COLMAP/feature-matching/bundle-adjustment nữa — tiết kiệm rất nhiều thời gian và giảm hẳn rủi ro lỗi/OOM ở bước đó.
+- ✅ **`sparse/0/` (kết quả COLMAP) có dữ liệu hợp lệ ở CẢ 13/13 scene** (cả `public_set` lẫn `private_set1`). Pipeline nên **dùng thẳng sparse có sẵn**, không cần tự chạy lại COLMAP/feature-matching/bundle-adjustment nữa — tiết kiệm rất nhiều thời gian và giảm hẳn rủi ro lỗi/OOM ở bước đó.
 
 ## 1. Cây thư mục
 
@@ -92,13 +95,16 @@ image_name, qw, qx, qy, qz, tx, ty, tz, fx, fy, cx, cy, width, height
 | HNI0437 | private | 224 | — | 56 | ✅ |
 
 **Lịch sử phát hiện (giữ lại để nhớ lý do pipeline được thiết kế có nhánh dự phòng):**
-Bản dataset tải về ban đầu (trước 04/07/2026) có lỗi đóng gói nghiêm trọng —
-`sparse/0/` rỗng hoàn toàn ở `public_set` (5/5 scene), và ở `private_set1` chỉ
-đúng `HCM0249` có dữ liệu thật, 5 scene khác có file `cameras.bin`/`images.bin`...
-tồn tại nhưng **toàn bộ 0 byte**, 2 scene còn lại thiếu hẳn thư mục `sparse/`.
-Đã báo cáo nghi vấn này là lỗi đóng gói của BTC — và đúng là vậy, bản cập nhật
-04/07/2026 đã có sparse hợp lệ ở cả 13/13 scene (kiểm chứng lại bằng cách xem
-kích thước `images.bin`/`points3D.bin` giờ đúng bằng hàng chục MB thay vì 0 byte).
+Bản dataset kiểm tra ban đầu ở máy local (trước 04/07/2026) có vẻ thiếu dữ liệu
+nghiêm trọng — `sparse/0/` rỗng hoàn toàn ở `public_set` (5/5 scene), và ở
+`private_set1` chỉ đúng `HCM0249` có dữ liệu thật, 5 scene khác có file
+`cameras.bin`/`images.bin`... tồn tại nhưng **toàn bộ 0 byte**, 2 scene còn lại
+thiếu hẳn thư mục `sparse/`. Lúc đó nghi là lỗi đóng gói của BTC — nhưng sau khi
+tải/giải nén lại đầy đủ từ đúng nguồn dữ liệu, xác nhận **dataset gốc vốn đã có
+sparse hợp lệ ở cả 13/13 scene từ đầu**; phần thiếu trước đó là do lần tải/giải
+nén về máy cục bộ trước đây không đầy đủ (không phải lỗi từ BTC). Đã kiểm chứng
+lại bằng cách xem kích thước `images.bin`/`points3D.bin` đúng bằng hàng chục MB
+(không phải 0 byte) ở toàn bộ 13 scene.
 
 Ghi chú còn giữ nguyên: 2 scene có số ảnh/pose **thấp hơn** khoảng công bố trong đề bài (150–300 ảnh / 40–70 pose): `HCM1439` (103 ảnh / 26 pose) và `HNI0265` (205 ảnh / 52 pose) — không phải lỗi, chỉ là ngoại lệ nhỏ so với con số trung bình BTC nêu.
 

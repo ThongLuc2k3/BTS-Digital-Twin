@@ -32,6 +32,7 @@ from PIL import Image as PILImage
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.scenes import get_scene
 from common.poses import read_test_poses, pose_to_R_T_fov, assert_centered_principal_point
+from common.logging_utils import FileLog
 
 GS_REPO = os.environ.get("GS_REPO")
 if not GS_REPO or not (Path(GS_REPO) / "train.py").exists():
@@ -95,7 +96,6 @@ def main():
 
     iteration = args.iteration if args.iteration > 0 else find_latest_iteration(model_dir)
     ply_path = model_dir / "point_cloud" / f"iteration_{iteration}" / "point_cloud.ply"
-    print(f"Loading Gaussian model: {ply_path}")
 
     gaussians = GaussianModel(args.sh_degree)
     gaussians.load_ply(str(ply_path))
@@ -105,7 +105,11 @@ def main():
     pipe = _PipelineParamsStub()
 
     poses = read_test_poses(scene.test_poses_csv)
-    print(f"Rendering {len(poses)} pose cho scene {scene.name} -> {out_dir}")
+    log_path = out_dir.parent / "render.log"
+    log = FileLog(log_path)
+    print(f"===== {scene.name}: render {len(poses)} pose (iteration {iteration}) -> {out_dir} =====")
+    log.write(f"Model: {ply_path}")
+
     for i, pose in enumerate(poses):
         assert_centered_principal_point(pose)
         cam = build_minicam(pose)
@@ -122,10 +126,11 @@ def main():
         stem = Path(pose.image_name).stem
         out_path = out_dir / f"{stem}.png"
         pil_img.save(out_path, format="PNG")
-        if (i + 1) % 10 == 0 or i + 1 == len(poses):
-            print(f"  {i + 1}/{len(poses)}")
+        log.write(f"[{i + 1}/{len(poses)}] {pose.image_name} -> {out_path.name}")
 
-    print(f"Xong. {len(poses)} ảnh PNG tại {out_dir}")
+    log.write(f"Xong. {len(poses)} ảnh PNG tại {out_dir}")
+    log.close()
+    print(f"-> Xong {len(poses)} ảnh. Log chi tiết từng ảnh: {log_path}")
 
 
 if __name__ == "__main__":

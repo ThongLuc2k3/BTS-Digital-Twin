@@ -88,7 +88,21 @@ python 06_package_submission.py --out ../../submission_round1.zip
 Script tự kiểm tra đủ 8 scene / đủ ảnh / đúng kích thước trước khi nén, và verify
 lại chính file zip vừa tạo. Nếu báo lỗi, KHÔNG nộp — sửa xong chạy lại.
 
-## 2. Ghi chú quan trọng nằm rải trong code (đọc trước khi chạy)
+## 2. Log chi tiết nằm ở đâu (console chỉ in tóm tắt, tránh spam khi chạy 13 scene)
+
+| File log | Ghi gì |
+|---|---|
+| `work/<scene>/colmap/colmap.log` | Từng bước COLMAP ([1/4]...[4/4]) |
+| `work/<scene>/colmap/pycolmap_internal_logs/` | Log nội bộ rất chi tiết của chính thư viện COLMAP (glog) |
+| `work/<scene>/train.log` | Toàn bộ output của `train.py` (loss/iteration...) |
+| `work/<scene>/render.log` | Từng ảnh đã render (tên file, thứ tự) |
+
+Console/notebook chỉ hiện 1-2 dòng tóm tắt mỗi scene (số ảnh đăng ký, số điểm 3D,
+đường dẫn log) — cần xem chi tiết thì mở đúng file log tương ứng ở trên. Nếu
+`03_train_3dgs.sh` báo lỗi, nó tự in 50 dòng cuối của `train.log` ra console để
+không phải mò file khi có sự cố.
+
+## 3. Ghi chú quan trọng nằm rải trong code (đọc trước khi chạy)
 
 - `common/poses.py`: quy ước quaternion/translation world→camera, công thức FOV —
   đối chiếu byte-for-byte với `scene/dataset_readers.py` của gaussian-splatting.

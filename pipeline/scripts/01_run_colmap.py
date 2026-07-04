@@ -22,7 +22,6 @@ WORK_ROOT = Path(__file__).resolve().parents[1] / "work"
 
 
 def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool, overwrite: bool):
-    print(f"\n===== Scene {scene.name} ({scene.split}) =====")
     workdir = WORK_ROOT / scene.name / "colmap"
 
     camera_params_prior = None
@@ -32,9 +31,8 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
             camera_params_prior = f"{fx},{cx},{cy},0.0"
         elif camera_model == "PINHOLE":
             camera_params_prior = f"{fx},{fx},{cx},{cy}"
-        print(f"Dùng prior nội tham số từ test_poses.csv: {camera_params_prior} "
-              f"(giả định train/test cùng 1 camera vật lý trong 1 chuyến bay)")
 
+    print(f"===== {scene.name} ({scene.split}) — COLMAP ({matching}, {camera_model}) =====")
     result = run_colmap_scene(
         images_dir=scene.train_images_dir,
         workdir=workdir,
@@ -44,12 +42,11 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
         overwrite=overwrite,
     )
     n_total = len(list(scene.train_images_dir.glob("*")))
-    print(f"-> Đăng ký được {result['num_reg_images']}/{n_total} ảnh, "
-          f"{result['num_points3D']} điểm 3D thưa.")
+    print(f"-> {result['num_reg_images']}/{n_total} ảnh đăng ký, {result['num_points3D']} điểm 3D. "
+          f"Dense: {result['dense_dir']} | Log chi tiết: {result['log_path']}")
     if result["num_reg_images"] < 0.8 * n_total:
-        print(f"[CẢNH BÁO] Tỉ lệ đăng ký ảnh thấp (<80%) — cân nhắc thử "
-              f"--matching exhaustive hoặc kiểm tra lại ảnh scene {scene.name}.")
-    print(f"Dense (dùng cho train 3DGS): {result['dense_dir']}")
+        print(f"[CẢNH BÁO] {scene.name}: tỉ lệ đăng ký ảnh thấp (<80%) — cân nhắc thử "
+              f"--matching exhaustive hoặc kiểm tra lại ảnh scene này.")
     return result
 
 

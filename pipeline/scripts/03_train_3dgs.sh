@@ -44,22 +44,36 @@ fi
 for SCENE in "$@"; do
   SOURCE_DIR="$PIPELINE_DIR/work/$SCENE/colmap/dense"
   MODEL_DIR="$PIPELINE_DIR/work/$SCENE/gs_model"
+  LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
 
   if [[ ! -d "$SOURCE_DIR/sparse/0" ]]; then
     echo "[BỎ QUA] $SCENE: chưa thấy $SOURCE_DIR/sparse/0 — chạy 01_run_colmap.py --scene $SCENE trước." >&2
     continue
   fi
 
-  echo "===== Train 3DGS: $SCENE ($ITERATIONS iterations) ====="
+  # train.py in progress bar (tqdm) qua hàng chục nghìn iteration — rất dài nếu
+  # hiện hết ra console/notebook. Redirect toàn bộ ra file log, notebook chỉ
+  # thấy 2 dòng (bắt đầu/kết thúc) mỗi scene. Muốn xem tiến độ lúc đang chạy:
+  # mở 1 cell khác gõ  !tail -n 30 "<LOG_FILE>"
+  echo "===== Train 3DGS: $SCENE ($ITERATIONS iterations) — log: $LOG_FILE ====="
+  set +e
   python "$GS_REPO/train.py" \
     -s "$SOURCE_DIR" \
     -m "$MODEL_DIR" \
     --iterations "$ITERATIONS" \
     --save_iterations "$ITERATIONS" \
-    --test_iterations "$ITERATIONS"
+    --test_iterations "$ITERATIONS" \
+    > "$LOG_FILE" 2>&1
   # Không dùng --eval: ta muốn dùng TOÀN BỘ ảnh train/images/ để train (không
   # giữ lại phần nào làm test nội bộ của repo), vì việc tự đánh giá chất lượng
   # đã làm riêng trên public_set bằng 05_eval_metrics.py.
+  STATUS=$?
+  set -e
 
-  echo "-> Model: $MODEL_DIR/point_cloud/iteration_$ITERATIONS/point_cloud.ply"
+  if [[ $STATUS -ne 0 ]]; then
+    echo "[LỖI] Train thất bại cho $SCENE (exit $STATUS) — 50 dòng cuối log:" >&2
+    tail -n 50 "$LOG_FILE" >&2
+    exit $STATUS
+  fi
+  echo "-> Xong $SCENE. Model: $MODEL_DIR/point_cloud/iteration_$ITERATIONS/point_cloud.ply"
 done

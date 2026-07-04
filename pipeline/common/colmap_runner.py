@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pycolmap
 
+from common.logging_utils import FileLog, quiet_pycolmap
+
 
 def run_colmap_scene(
     images_dir: Path,
@@ -32,14 +34,22 @@ def run_colmap_scene(
 ) -> dict:
     """Chạy toàn bộ pipeline SfM cho 1 scene.
 
+    Các bước trung gian ([1/4]...[4/4]) chỉ ghi vào file log (không in ra
+    console) — xem "log_path" trong dict trả về nếu cần tra cứu chi tiết.
+
     Trả về dict {
         "sparse_dir": Path,      # workdir/sparse/<best_idx>  (định dạng COLMAP gốc, có thể méo)
         "dense_dir": Path,       # workdir/dense              (images/ + sparse/0/, đã undistort PINHOLE)
         "num_reg_images": int,
         "num_points3D": int,
+        "log_path": Path,
     }
     """
     workdir.mkdir(parents=True, exist_ok=True)
+    log_path = workdir / "colmap.log"
+    log = FileLog(log_path)
+    quiet_pycolmap(log_dir=workdir / "pycolmap_internal_logs")
+
     database_path = workdir / "database.db"
     if overwrite and database_path.exists():
         database_path.unlink()
@@ -50,7 +60,7 @@ def run_colmap_scene(
         reader_options.camera_params = camera_params_prior
 
     if not database_path.exists():
-        print(f"[1/4] Feature extraction ({images_dir.name}, model={camera_model}) ...")
+        log.write(f"[1/4] Feature extraction ({images_dir.name}, model={camera_model}) ...")
         pycolmap.extract_features(
             database_path=database_path,
             image_path=images_dir,
@@ -58,9 +68,9 @@ def run_colmap_scene(
             reader_options=reader_options,
         )
     else:
-        print("[1/4] Bỏ qua feature extraction (database.db đã tồn tại).")
+        log.write("[1/4] Bỏ qua feature extraction (database.db đã tồn tại).")
 
-    print(f"[2/4] Feature matching ({matching}) ...")
+    log.write(f"[2/4] Feature matching ({matching}) ...")
     if matching == "exhaustive":
         pycolmap.match_exhaustive(database_path)
     else:
@@ -69,13 +79,13 @@ def run_colmap_scene(
     sparse_root = workdir / "sparse"
     sparse_root.mkdir(exist_ok=True)
     if any(sparse_root.iterdir()) and not overwrite:
-        print("[3/4] Bỏ qua mapping (sparse/ đã có kết quả).")
+        log.write("[3/4] Bỏ qua mapping (sparse/ đã có kết quả).")
         recs = {
             int(p.name): pycolmap.Reconstruction(p)
             for p in sorted(sparse_root.iterdir()) if p.is_dir() and (p / "cameras.bin").exists()
         }
     else:
-        print("[3/4] Incremental mapping (SfM + bundle adjustment) ...")
+        log.write("[3/4] Incremental mapping (SfM + bundle adjustment) ...")
         recs = pycolmap.incremental_mapping(
             database_path=database_path,
             image_path=images_dir,
@@ -83,23 +93,28 @@ def run_colmap_scene(
         )
 
     if not recs:
+        log.close()
         raise RuntimeError(
             f"COLMAP không tạo được reconstruction nào cho {images_dir}. "
-            f"Thử lại với matching='exhaustive' hoặc kiểm tra chất lượng/độ chồng lấn ảnh."
+            f"Thử lại với matching='exhaustive' hoặc kiểm tra chất lượng/độ chồng lấn ảnh. "
+            f"Chi tiết: {log_path}"
         )
 
     best_idx = max(recs, key=lambda i: recs[i].num_reg_images())
     best_rec = recs[best_idx]
     if len(recs) > 1:
         sizes = {i: r.num_reg_images() for i, r in recs.items()}
-        print(f"[CẢNH BÁO] COLMAP tách ra {len(recs)} model rời rạc: {sizes}. "
+        # Quan trọng — vẫn in ra console (không chỉ ghi log), vì ảnh hưởng trực
+        # tiếp tới độ đầy đủ của scene.
+        print(f"[CẢNH BÁO] {images_dir.parent.parent.name}: COLMAP tách ra {len(recs)} model rời rạc: {sizes}. "
               f"Dùng model {best_idx} (nhiều ảnh nhất: {best_rec.num_reg_images()}/{len(list(images_dir.iterdir()))}). "
               f"Các ảnh ở model khác sẽ KHÔNG có trong sparse cuối cùng.")
+        log.write(f"[CẢNH BÁO] tách {len(recs)} model rời rạc: {sizes}")
 
     sparse_dir = sparse_root / str(best_idx)
 
     dense_dir = workdir / "dense"
-    print(f"[4/4] Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
+    log.write(f"[4/4] Undistort ảnh + camera model -> PINHOLE sạch tại {dense_dir} ...")
     pycolmap.undistort_images(
         output_path=dense_dir,
         input_path=sparse_dir,
@@ -117,9 +132,13 @@ def run_colmap_scene(
         tmp_nested.mkdir(parents=True)
         tmp.rename(tmp_nested / "0")
 
+    log.write(f"Xong. num_reg_images={best_rec.num_reg_images()} num_points3D={best_rec.num_points3D()}")
+    log.close()
+
     return {
         "sparse_dir": sparse_dir,
         "dense_dir": dense_dir,
         "num_reg_images": best_rec.num_reg_images(),
         "num_points3D": best_rec.num_points3D(),
+        "log_path": log_path,
     }

@@ -77,7 +77,7 @@ def main():
     )
     own_rec = pycolmap.Reconstruction(result["sparse_dir"])
     own_centers = load_camera_centers(own_rec)
-    print(f"  -> {len(own_centers)} ảnh có pose trong sparse tự chạy.")
+    print(f"  -> {len(own_centers)} ảnh có pose trong sparse tự chạy. (log chi tiết: {result['log_path']})")
 
     common_names = sorted(set(official_centers) & set(own_centers))
     print(f"\nSố ảnh xuất hiện ở CẢ 2 reconstruction: {len(common_names)}")

@@ -28,3 +28,9 @@ Thumbs.db
 # Phòng khi lỡ tạo file chứa secret cục bộ
 .env
 *.token
+
+# Tài liệu/kế hoạch riêng — chỉ đẩy code, không đẩy các file này lên git
+/Đề bài.md
+/KE_HOACH_VONG1.md
+/Dataset/README.md
+/pipeline/README.md

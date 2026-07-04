@@ -1,0 +1,30 @@
+# Dữ liệu thi — nặng (~1GB), đã lưu riêng ở Google Drive (xem pipeline/kaggle_pipeline.ipynb).
+# Vẫn giữ lại Dataset/README.md (tài liệu, nhẹ, không nằm trong VAI_NVS_DATA/).
+Dataset/VAI_NVS_DATA/
+
+# Output trung gian của pipeline (COLMAP database, model 3DGS, ảnh render...) — sinh lại được, không phải source.
+pipeline/work/
+
+# Repo train/render 3DGS — được clone lại mỗi lần chạy (xem 03_train_3dgs.sh), không lưu trong repo này.
+gaussian-splatting/
+
+# Bài nộp đóng gói / mọi file zip khác — build artifact, không phải source.
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Môi trường ảo (nếu tạo local)
+venv/
+.venv/
+env/
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db
+
+# Phòng khi lỡ tạo file chứa secret cục bộ
+.env
+*.token

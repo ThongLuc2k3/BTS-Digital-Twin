@@ -4,16 +4,7 @@ Tài liệu này mô tả **chính xác những gì thực sự nằm trong thư
 
 ## 0. Tóm tắt nhanh
 
-> **Cập nhật 05/07/2026**: bản kiểm tra trước đó của tài liệu này (04/07) từng ghi
-> nhận sparse chỉ hợp lệ ở 1/13 scene, nghi là lỗi đóng gói của BTC. Sau khi tải/
-> giải nén lại đầy đủ, xác nhận **dataset gốc trên Google Drive vốn đã có sparse
-> hợp lệ ở cả 13/13 scene từ đầu** — bản thiếu trước đó là do quá trình tải/giải
-> nén về máy cục bộ bị thiếu sót, KHÔNG phải lỗi từ phía BTC. Xem mục 3 để biết
-> chi tiết. Toàn bộ số liệu dưới đây đã kiểm tra lại trên dữ liệu đầy đủ.
-
-- Tổng dung lượng: **~3.2 GB** (`VAI_NVS_DATA/`, tăng nhiều so với lần đếm thiếu
-  trước đó ~948MB vì giờ có kèm sparse đầy đủ cho mọi scene), gồm 2 tập:
-  `public_set` (5 scene) và `private_set1` (8 scene) → **13 scene** tất cả.
+- Tổng dung lượng: **~3.2 GB** (`VAI_NVS_DATA/`), gồm 2 tập: `public_set` (5 scene) và `private_set1` (8 scene) → **13 scene** tất cả.
 - Ảnh đã bị **downscale 1/4 so với ảnh gốc** (ghi rõ trong mỗi `README.txt`), độ phân giải quan sát được là **1320×989** cho toàn bộ scene đã kiểm tra (train lẫn test).
 - **EXIF đã bị xóa** khỏi ảnh (không có GPS, không có thông tin máy bay).
 - ✅ **`sparse/0/` (kết quả COLMAP) có dữ liệu hợp lệ ở CẢ 13/13 scene** (cả `public_set` lẫn `private_set1`). Pipeline nên **dùng thẳng sparse có sẵn**, không cần tự chạy lại COLMAP/feature-matching/bundle-adjustment nữa — tiết kiệm rất nhiều thời gian và giảm hẳn rủi ro lỗi/OOM ở bước đó.
@@ -23,9 +14,7 @@ Tài liệu này mô tả **chính xác những gì thực sự nằm trong thư
 ```
 Dataset/
 └── VAI_NVS_DATA/
-    ├── __MACOSX/                 ← rác do máy Mac tạo khi nén zip (file "._*"), KHÔNG chứa dữ liệu thật, có thể xoá an toàn (908 KB)
     └── phase1/
-        ├── .DS_Store             ← rác macOS, có thể xoá
         ├── public_set/           ← tập công khai: có ĐẦY ĐỦ ảnh train + ảnh test thật (ground-truth) để tự luyện & tự chấm
         │   ├── HCM0181/
         │   ├── HCM0193/
@@ -54,7 +43,7 @@ HCM0181/
 ├── README.txt              ← mô tả định dạng, số ảnh, scale factor (giống nhau ở mọi scene, chỉ khác số liệu)
 ├── train/
 │   ├── images/              ← ảnh RGB dùng để dựng lại scene (.JPG, tên gốc kiểu DJI_<timestamp>_<index>_V.JPG)
-│   └── sparse/0/             ← (nếu có) sparse reconstruction từ COLMAP: cameras.bin, images.bin, points3D.bin (+ points3D.ply, rigs.bin, frames.bin ở phiên bản COLMAP mới)
+│   └── sparse/0/             ← sparse reconstruction từ COLMAP: cameras.bin, images.bin, points3D.bin (+ points3D.ply, rigs.bin, frames.bin ở phiên bản COLMAP mới)
 └── test/
     ├── images/               ← [CHỈ CÓ Ở public_set] ảnh thật tại các pose mục tiêu — dùng để tự tính PSNR/SSIM/LPIPS
     └── test_poses.csv        ← danh sách pose (góc nhìn) cần render, ở CẢ public_set và private_set1
@@ -76,7 +65,7 @@ image_name, qw, qx, qy, qz, tx, ty, tz, fx, fy, cx, cy, width, height
 
 Đã kiểm tra toàn bộ 13 scene: **width×height luôn là 1320×989** — đề bài cảnh báo "mỗi scene/pose có thể khác kích thước" nhưng thực tế dữ liệu hiện có đồng nhất. Vẫn nên code tổng quát (đọc width/height từ CSV, không hard-code) để an toàn nếu private test #2 hoặc dữ liệu bổ sung sau này khác đi.
 
-## 3. Bảng số liệu đầy đủ (đã đếm trực tiếp từng scene, dữ liệu cập nhật 04/07/2026)
+## 3. Bảng số liệu đầy đủ (đã đếm trực tiếp từng scene)
 
 | Scene | Tập | Ảnh train | Ảnh test (GT) | Số pose cần sinh | Sparse COLMAP hợp lệ? |
 |---|---|---|---|---|---|
@@ -94,19 +83,7 @@ image_name, qw, qx, qy, qz, tx, ty, tz, fx, fy, cx, cy, width, height
 | HNI0366 | private | 240 | — | 60 | ✅ |
 | HNI0437 | private | 224 | — | 56 | ✅ |
 
-**Lịch sử phát hiện (giữ lại để nhớ lý do pipeline được thiết kế có nhánh dự phòng):**
-Bản dataset kiểm tra ban đầu ở máy local (trước 04/07/2026) có vẻ thiếu dữ liệu
-nghiêm trọng — `sparse/0/` rỗng hoàn toàn ở `public_set` (5/5 scene), và ở
-`private_set1` chỉ đúng `HCM0249` có dữ liệu thật, 5 scene khác có file
-`cameras.bin`/`images.bin`... tồn tại nhưng **toàn bộ 0 byte**, 2 scene còn lại
-thiếu hẳn thư mục `sparse/`. Lúc đó nghi là lỗi đóng gói của BTC — nhưng sau khi
-tải/giải nén lại đầy đủ từ đúng nguồn dữ liệu, xác nhận **dataset gốc vốn đã có
-sparse hợp lệ ở cả 13/13 scene từ đầu**; phần thiếu trước đó là do lần tải/giải
-nén về máy cục bộ trước đây không đầy đủ (không phải lỗi từ BTC). Đã kiểm chứng
-lại bằng cách xem kích thước `images.bin`/`points3D.bin` đúng bằng hàng chục MB
-(không phải 0 byte) ở toàn bộ 13 scene.
-
-Ghi chú còn giữ nguyên: 2 scene có số ảnh/pose **thấp hơn** khoảng công bố trong đề bài (150–300 ảnh / 40–70 pose): `HCM1439` (103 ảnh / 26 pose) và `HNI0265` (205 ảnh / 52 pose) — không phải lỗi, chỉ là ngoại lệ nhỏ so với con số trung bình BTC nêu.
+Ghi chú: 2 scene có số ảnh/pose **thấp hơn** khoảng công bố trong đề bài (150–300 ảnh / 40–70 pose): `HCM1439` (103 ảnh / 26 pose) và `HNI0265` (205 ảnh / 52 pose) — không phải lỗi, chỉ là ngoại lệ nhỏ so với con số trung bình BTC nêu.
 
 ## 4. Định dạng `sparse/0/`
 
@@ -119,9 +96,8 @@ Ghi chú còn giữ nguyên: 2 scene có số ảnh/pose **thấp hơn** khoản
 
 Đọc bằng Python: dùng `pycolmap` (khuyến nghị, hỗ trợ format mới) — xem `pipeline/common/colmap_runner.py`.
 
-## 5. Điểm cần lưu ý khi xây dựng pipeline (rút ra từ việc khảo sát dữ liệu)
+## 5. Điểm cần lưu ý khi xây dựng pipeline
 
-1. **Ưu tiên dùng thẳng sparse có sẵn** cho mọi scene (giờ cả 13/13 đều hợp lệ) — chỉ cần bước undistort sang PINHOLE sạch trước khi đưa vào 3DGS, KHÔNG cần tự chạy lại feature extraction/matching/bundle-adjustment nữa (xem `pipeline/common/colmap_runner.py::use_provided_sparse`). Việc tự chạy COLMAP từ đầu chỉ còn cần thiết nếu nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó, hoặc muốn đối chiếu (dùng `--force_own_colmap`).
-2. **Rủi ro hệ quy chiếu (coordinate frame) giờ đã giảm nhiều** so với lúc dataset còn lỗi: vì dùng thẳng sparse do chính BTC tạo ra (không tự dựng lại), pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó (cùng 1 lần chạy COLMAP của BTC). Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` rồi so PSNR với ảnh thật (xem `pipeline/scripts/05_eval_metrics.py`) trước khi tin tưởng hoàn toàn.
-3. **`__MACOSX/` và mọi `.DS_Store`** đều là rác, không phải dữ liệu thi — bỏ qua hoặc xoá khi cần gọn thư mục.
-4. Tên file ảnh test (`image_name` trong CSV) giữ nguyên đuôi `.JPG` gốc — cần làm rõ với BTC việc file PNG nộp bài có phải đặt tên **y hệt chuỗi này** (kể cả đuôi `.JPG`) hay phải đổi đuôi thành `.png` (xem mục câu hỏi mở trong file kế hoạch).
+1. **Ưu tiên dùng thẳng sparse có sẵn** cho mọi scene (cả 13/13 đều hợp lệ) — chỉ cần bước undistort sang PINHOLE sạch trước khi đưa vào 3DGS, KHÔNG cần tự chạy lại feature extraction/matching/bundle-adjustment (xem `pipeline/common/colmap_runner.py::use_provided_sparse`). Việc tự chạy COLMAP từ đầu chỉ cần thiết nếu nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó, hoặc muốn đối chiếu (dùng `--force_own_colmap`).
+2. Vì dùng thẳng sparse do chính BTC tạo ra (không tự dựng lại), pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó (cùng 1 lần chạy COLMAP của BTC). Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` rồi so PSNR với ảnh thật (xem `pipeline/scripts/05_eval_metrics.py`) trước khi tin tưởng hoàn toàn.
+3. Tên file ảnh test (`image_name` trong CSV) giữ nguyên đuôi `.JPG` gốc — cần làm rõ với BTC việc file PNG nộp bài có phải đặt tên **y hệt chuỗi này** (kể cả đuôi `.JPG`) hay phải đổi đuôi thành `.png` (xem mục câu hỏi mở trong file kế hoạch).

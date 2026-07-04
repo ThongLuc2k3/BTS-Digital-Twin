@@ -17,10 +17,10 @@
 
 1. **`public_set` (5 scene) có ảnh test thật** → dùng để tự luyện + tự chấm PSNR/SSIM/LPIPS trước khi đụng vào private set.
 2. **`private_set1` (8 scene) không có ảnh test** — chỉ có `test_poses.csv`. Đây là tập phải nộp bài.
-3. ✅ **Cập nhật 05/07/2026: xác nhận `sparse/0/` hợp lệ ở CẢ 13/13 scene** (bản kiểm tra 04/07 từng ghi nhận chỉ 1/13 dùng được, nhưng đó là do lần tải/giải nén cục bộ trước đó thiếu sót, KHÔNG phải lỗi từ BTC — dataset gốc trên Google Drive vốn đã đầy đủ từ đầu, xem lịch sử ở `Dataset/README.md` mục 3). → **Pipeline nên dùng THẲNG sparse có sẵn cho mọi scene**, không cần tự chạy lại COLMAP nữa — tiết kiệm rất nhiều thời gian GPU và giảm hẳn rủi ro lỗi (OOM, đăng ký thiếu ảnh...) ở bước SfM.
+3. ✅ **`sparse/0/` hợp lệ ở CẢ 13/13 scene** → **Pipeline dùng THẲNG sparse có sẵn cho mọi scene**, không cần tự chạy lại COLMAP — tiết kiệm rất nhiều thời gian GPU và giảm hẳn rủi ro lỗi (OOM, đăng ký thiếu ảnh...) ở bước SfM.
 4. Ảnh đã downscale sẵn về **1320×989**, không có EXIF/GPS.
-5. **Rủi ro hệ toạ độ (coordinate frame) giờ giảm nhiều** so với lúc tưởng dataset thiếu sparse: vì dùng thẳng sparse do chính BTC tạo, pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó. Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` và so PSNR với ảnh thật trước khi tin tưởng hoàn toàn cho private set (xem Tuần 0 bên dưới) — nhưng không còn là thực nghiệm "bắt buộc phải qua mới dám làm tiếp" như trước, mà là 1 bước sanity-check gọn.
-6. Local machine hiện tại: GPU GTX 1650 4GB — **không đủ** để train 3DGS chất lượng tốt cho scene lớn. Cần thuê GPU ngoài (Colab Pro/Kaggle/RunPod/Vast.ai — 1×3090/4090/A4000 trở lên) cho bước train thật. Đã gặp thực tế: train 3DGS có thể bị **CUDA out of memory** giữa chừng ở scene nhiều chi tiết mảnh (khung thép/dây cáp BTS khiến densify sinh rất nhiều Gaussian) — xem `pipeline/scripts/03_train_3dgs.sh` đã có sẵn cờ giảm tải (`SH_DEGREE`, `DENSIFY_GRAD_THRESHOLD`, `RESOLUTION`) và tự lưu checkpoint giữa chừng.
+5. Vì dùng thẳng sparse do chính BTC tạo, pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó. Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` và so PSNR với ảnh thật trước khi tin tưởng hoàn toàn cho private set (xem Tuần 0 bên dưới) — 1 bước sanity-check gọn, không phải điều kiện chặn cứng.
+6. Local machine hiện tại: GPU GTX 1650 4GB — **không đủ** để train 3DGS chất lượng tốt cho scene lớn. Cần thuê GPU ngoài (Colab Pro/Kaggle/RunPod/Vast.ai — 1×3090/4090/A4000 trở lên) cho bước train thật. Lưu ý: train 3DGS có thể bị **CUDA out of memory** ở scene nhiều chi tiết mảnh (khung thép/dây cáp BTS khiến densify sinh rất nhiều Gaussian) — `pipeline/scripts/03_train_3dgs.sh` đã có sẵn cờ giảm tải (`SH_DEGREE`, `DENSIFY_GRAD_THRESHOLD`, `RESOLUTION`) và tự lưu checkpoint giữa chừng.
 
 ## 3. Baseline được đề xuất (đơn giản, đủ để qua vòng 1)
 
@@ -49,30 +49,24 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 
 | # | Vấn đề | Cách xử lý |
 |---|---|---|
-| 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | Đã giảm rủi ro nhiều từ khi dùng thẳng sparse của BTC (không tự dựng lại) — vẫn nên **sanity-check** bằng cách render 1 scene `public_set` và so PSNR với ảnh thật (Tuần 0) trước khi tin tưởng cho private set, nhưng không còn là điều kiện chặn cứng. |
-| ~~2~~ | ~~7/8 scene private tưởng thiếu sparse hợp lệ~~ | **Đã xử lý**: do lần tải/giải nén cục bộ trước đó thiếu sót, không phải lỗi BTC — tải/giải nén lại đầy đủ thì sparse hợp lệ ở cả 13/13 scene. |
-| 3 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | Đề bài viết "tên file theo `image_name`" nhưng ví dụ cấu trúc lại dùng `0001.png`. Hỏi BTC. Mặc định an toàn: dùng **nguyên văn chuỗi `image_name`** làm tên file (kể cả đuôi `.JPG`) vì đó là câu chữ literal của đề bài; làm script cấu hình được để đổi nhanh nếu BTC trả lời khác. |
-| 4 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | Dữ liệu thật không hề có tên `scene_001`. Gần như chắc chắn phải dùng **tên thư mục thật của từng scene** trong private_set1. Hỏi BTC nếu còn nghi ngờ, nhưng cứ code theo tên thật trước. |
-| 5 | PSNR/SSIM/LPIPS tính trên toàn ảnh hay loại trừ nền/sky? | Không ảnh hưởng cách nộp bài, chỉ ảnh hưởng cách ta tự đánh giá nội bộ trên `public_set`. Cứ tính trên toàn ảnh trước, không cần chờ trả lời mới bắt đầu. |
-| 6 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | Hỏi BTC qua kênh chính thức, làm song song trong lúc chờ trả lời (không phải rủi ro chặn tiến độ). |
+| 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | **Sanity-check**: render 1 scene `public_set` và so PSNR với ảnh thật (Tuần 0) trước khi tin tưởng cho private set. |
+| 2 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | Đề bài viết "tên file theo `image_name`" nhưng ví dụ cấu trúc lại dùng `0001.png`. Hỏi BTC. Mặc định an toàn: dùng **nguyên văn chuỗi `image_name`** làm tên file (kể cả đuôi `.JPG`) vì đó là câu chữ literal của đề bài; làm script cấu hình được để đổi nhanh nếu BTC trả lời khác. |
+| 3 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | Dữ liệu thật không hề có tên `scene_001`. Gần như chắc chắn phải dùng **tên thư mục thật của từng scene** trong private_set1. Hỏi BTC nếu còn nghi ngờ, nhưng cứ code theo tên thật trước. |
+| 4 | PSNR/SSIM/LPIPS tính trên toàn ảnh hay loại trừ nền/sky? | Không ảnh hưởng cách nộp bài, chỉ ảnh hưởng cách ta tự đánh giá nội bộ trên `public_set`. Cứ tính trên toàn ảnh trước, không cần chờ trả lời mới bắt đầu. |
+| 5 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | Hỏi BTC qua kênh chính thức, làm song song trong lúc chờ trả lời (không phải rủi ro chặn tiến độ). |
 
-**Nguyên tắc:** không còn câu hỏi nào thực sự chặn tiến độ (blocking) như trước — có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
+**Nguyên tắc:** không có câu hỏi nào thực sự chặn tiến độ (blocking) — có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
 
 ## 5. Kế hoạch theo tuần (04/07 → 30/07/2026)
 
 ### Tuần 0 — Dựng khung + sanity-check hệ toạ độ (04/07 – 06/07)
-
-> Đã đơn giản hoá nhiều so với bản kế hoạch gốc — vì BTC đã phát hành lại dataset
-> với sparse hợp lệ ở cả 13/13 scene (04/07/2026), không cần thực nghiệm Sim3/Umeyama
-> đối chiếu COLMAP tự chạy vs sparse gốc như trước nữa (script `02_validate_frame.py`
-> vẫn giữ lại trong code, dùng khi cần đối chiếu/nghi ngờ 1 scene cụ thể).
 
 - [ ] Cài môi trường: `pycolmap`, PyTorch + CUDA, clone `graphdeco-inria/gaussian-splatting`, `lpips`/`scikit-image` để tự tính metric (xem `pipeline/README.md`).
 - [ ] Chạy `01_run_colmap.py` cho 1 scene `public_set` (vd `hcm0031`/`HCM0204`, đã có sparse sẵn) — script tự nhận diện sparse hợp lệ và bỏ qua bước tự chạy COLMAP, chỉ undistort (nhanh).
 - [ ] **Sanity-check chính**: train 3DGS (`03_train_3dgs.sh`) + render (`04_render_test_poses.py`) + tính PSNR/SSIM (`05_eval_metrics.py`) trên đúng scene `public_set` đó, so với `test/images/` thật.
   - PSNR hợp lý (không phải ảnh nhiễu loạn hoàn toàn) → xác nhận sparse của BTC + `test_poses.csv` cùng hệ toạ độ, yên tâm áp dụng cho private set.
   - PSNR quá tệ/ảnh sai hoàn toàn → mới cần chạy sâu hơn `02_validate_frame.py` hoặc hỏi BTC.
-- [ ] Gửi câu hỏi #3, #4, #5, #6 (mục 4) cho BTC qua kênh hỗ trợ chính thức ngay trong tuần này.
+- [ ] Gửi câu hỏi #2, #3, #4, #5 (mục 4) cho BTC qua kênh hỗ trợ chính thức ngay trong tuần này.
 
 ### Tuần 1 — Baseline đầy đủ trên public_set (07/07 – 12/07)
 
@@ -112,6 +106,6 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 - [ ] Đủ đúng 8 thư mục scene (đúng tên thật, không phải `scene_001`).
 - [ ] Mỗi scene: số ảnh = số dòng dữ liệu trong `test_poses.csv` scene đó (26/50/52/56/60 tuỳ scene — **không đều nhau**, xem bảng ở `Dataset/README.md`).
 - [ ] Mỗi ảnh đúng kích thước `width×height` ghi trong CSV (đọc từ CSV, không hard-code 1320×989 dù hiện tại luôn đúng).
-- [ ] Tên file đúng theo quy ước đã chốt với BTC (mục 4, câu hỏi #3).
+- [ ] Tên file đúng theo quy ước đã chốt với BTC (mục 4, câu hỏi #2).
 - [ ] Zip không chứa thư mục rác kiểu `__MACOSX/` (nếu nén trên máy Mac, cẩn thận zip mặc định của Finder).
 - [ ] Test giải nén lại zip ở máy khác/thư mục sạch để chắc chắn cấu trúc đúng như BTC yêu cầu.

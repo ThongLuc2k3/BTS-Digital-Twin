@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-"""Sanity-check hệ toạ độ (TUỲ CHỌN — không còn bắt buộc, xem cập nhật dưới).
+"""Sanity-check hệ toạ độ (TUỲ CHỌN — không bắt buộc).
 
-Bối cảnh lịch sử (xem KE_HOACH_VONG1.md mục 2 và 4, Dataset/README.md mục 3):
-lần kiểm tra dataset ban đầu ở máy local (do tải/giải nén thiếu sót, không phải
-lỗi từ BTC) chỉ thấy 1/13 scene (HCM0249) kèm sparse hợp lệ, nên có rủi ro lớn
-là phải tự chạy COLMAP cho 12 scene còn lại và không chắc hệ toạ độ tự dựng có
-khớp với test_poses.csv hay không — script này được viết để kiểm định đúng giả
-thuyết đó trước khi render hàng loạt.
-
-**Cập nhật 05/07/2026**: sau khi tải/giải nén lại đầy đủ, xác nhận dataset gốc
-vốn đã có sparse hợp lệ ở cả 13/13 scene từ đầu — pipeline giờ dùng THẲNG sparse
-có sẵn (xem `01_run_colmap.py` và `common/colmap_runner.py::use_provided_sparse`),
-không cần tự dựng lại COLMAP nữa, nên rủi ro lệch hệ toạ độ giảm hẳn. Script này
-vẫn giữ lại, hữu ích khi:
+Dataset có sparse hợp lệ ở cả 13/13 scene, nên pipeline mặc định dùng THẲNG
+sparse có sẵn (xem `01_run_colmap.py` và
+`common/colmap_runner.py::use_provided_sparse`), không cần tự dựng lại COLMAP.
+Script này vẫn giữ lại, hữu ích khi:
 - Muốn đối chiếu/kiểm tra thêm cho chắc trước khi tin tưởng hoàn toàn.
 - Nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó.
 
@@ -60,7 +52,8 @@ def main():
     if not scene.has_valid_provided_sparse():
         raise SystemExit(
             f"{SCENE_NAME}: sparse gốc không hợp lệ/không tồn tại — không thể chạy "
-            f"kiểm định này. Kiểm tra lại Dataset/README.md, có thể BTC đã cập nhật data."
+            f"kiểm định này. Kiểm tra lại dataset đã tải/giải nén đầy đủ chưa "
+            f"(xem BTS_DATASET_ROOT có trỏ đúng chỗ không, và __MACOSX/ có bị lẫn vào không)."
         )
 
     print(f"Đang load sparse GỐC (BTC cung cấp) từ {scene.provided_sparse_dir} ...")

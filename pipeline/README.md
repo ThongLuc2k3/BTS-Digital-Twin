@@ -27,10 +27,8 @@ export GS_REPO=$(pwd)/gaussian-splatting   # cần export lại mỗi lần mở
 
 ## 1. Thứ tự chạy (đúng theo `KE_HOACH_VONG1.md`)
 
-> **Cập nhật 04/07/2026**: BTC đã phát hành lại dataset, sparse `sparse/0/` giờ
-> hợp lệ ở cả 13/13 scene — `01_run_colmap.py` mặc định **dùng thẳng sparse có
-> sẵn** (chỉ undistort, rất nhanh), không tự chạy lại COLMAP nữa. Bước "Phase 0"
-> dưới đây giờ là sanity-check tuỳ chọn, không còn bắt buộc chặn tiến độ.
+Sparse `sparse/0/` hợp lệ ở cả 13/13 scene — `01_run_colmap.py` mặc định **dùng
+thẳng sparse có sẵn** (chỉ undistort, rất nhanh), không tự chạy lại COLMAP.
 
 ### Bước 0 (tuỳ chọn) — Sanity-check hệ toạ độ nếu còn nghi ngờ
 
@@ -121,4 +119,4 @@ không phải mò file khi có sự cố.
 - `scripts/04_render_test_poses.py`: PNG lưu theo `<stem>.png` trong thư mục làm
   việc nội bộ; tên file CUỐI CÙNG trong zip nộp bài do `06_package_submission.py
   --filename_mode` quyết định (mặc định giữ nguyên `image_name`, kể cả đuôi
-  `.JPG` gốc — xem `KE_HOACH_VONG1.md` mục 4 câu hỏi #3, chưa có xác nhận BTC).
+  `.JPG` gốc — xem `KE_HOACH_VONG1.md` mục 4 câu hỏi #2, chưa có xác nhận BTC).

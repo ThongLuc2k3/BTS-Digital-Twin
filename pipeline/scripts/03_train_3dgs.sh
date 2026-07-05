@@ -43,6 +43,13 @@
 # gặp "OSError: No space left on device" ngay tại checkpoint 15000 của scene
 # thứ 4 trong 1 lần chạy thật). Set CLEANUP_DENSE_IMAGES=0 nếu muốn giữ lại để
 # debug COLMAP sau này (vd nghi ngờ ảnh input sai).
+#
+# Tập trung train vào 1 vùng nhỏ (vd ăn-ten) — xem pipeline/scripts/07_build_antenna_weights.py
+# và apply_antenna_patch.py. Set ANTENNA_FOCUS=1 để bật: với MỖI scene, nếu có sẵn
+# pipeline/work/<scene>/antenna_weights.json thì tự truyền --antenna_weights_json
+# cho train.py (yêu cầu đã chạy apply_antenna_patch.py trên $GS_REPO trước, script
+# tự kiểm tra và báo lỗi rõ nếu chưa vá). Scene nào chưa có file đó thì train bình
+# thường (không lỗi cả loop). ANTENNA_WEIGHT (tuỳ chọn) ghi đè hệ số nhân loss.
 
 set -euo pipefail
 
@@ -68,9 +75,16 @@ SH_DEGREE="${SH_DEGREE:-3}"
 DENSIFY_GRAD_THRESHOLD="${DENSIFY_GRAD_THRESHOLD:-0.0002}"
 RESOLUTION="${RESOLUTION:--1}"
 CLEANUP_DENSE_IMAGES="${CLEANUP_DENSE_IMAGES:-1}"
+ANTENNA_FOCUS="${ANTENNA_FOCUS:-0}"
 
 if [[ $# -eq 0 ]]; then
   echo "Cách dùng: $0 <scene1> [scene2 ...]" >&2
+  exit 1
+fi
+
+if [[ "$ANTENNA_FOCUS" == "1" ]] && ! grep -q "antenna_weights_json" "$GS_REPO/train.py"; then
+  echo "Lỗi: ANTENNA_FOCUS=1 nhưng $GS_REPO/train.py chưa được vá — chạy trước:" >&2
+  echo "  python apply_antenna_patch.py --gs_repo \"$GS_REPO\"" >&2
   exit 1
 fi
 
@@ -107,6 +121,20 @@ for SCENE in "$@"; do
     exit 1
   fi
 
+  ANTENNA_ARGS=()
+  ANTENNA_JSON="$PIPELINE_DIR/work/$SCENE/antenna_weights.json"
+  if [[ "$ANTENNA_FOCUS" == "1" ]]; then
+    if [[ -f "$ANTENNA_JSON" ]]; then
+      ANTENNA_ARGS+=(--antenna_weights_json "$ANTENNA_JSON")
+      if [[ -n "${ANTENNA_WEIGHT:-}" ]]; then
+        ANTENNA_ARGS+=(--antenna_weight "$ANTENNA_WEIGHT")
+      fi
+      echo "  [antenna-focus] $SCENE: dùng $ANTENNA_JSON"
+    else
+      echo "  [antenna-focus] $SCENE: không có $ANTENNA_JSON — train bình thường (chạy 07_build_antenna_weights.py trước nếu muốn bật)."
+    fi
+  fi
+
   # train.py in progress bar (tqdm) qua hàng chục nghìn iteration — rất dài nếu
   # hiện hết ra console/notebook, nên vẫn redirect toàn bộ ra file log. Nhưng
   # chạy nền (&) rồi định kỳ lấy đúng số "hiện tại/ITERATIONS" cuối cùng trong
@@ -122,6 +150,7 @@ for SCENE in "$@"; do
     --sh_degree "$SH_DEGREE" \
     --densify_grad_threshold "$DENSIFY_GRAD_THRESHOLD" \
     --resolution "$RESOLUTION" \
+    "${ANTENNA_ARGS[@]}" \
     > "$LOG_FILE" 2>&1 &
   # Không dùng --eval: ta muốn dùng TOÀN BỘ ảnh train/images/ để train (không
   # giữ lại phần nào làm test nội bộ của repo), vì việc tự đánh giá chất lượng

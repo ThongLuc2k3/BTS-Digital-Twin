@@ -33,6 +33,16 @@
 # Output: pipeline/work/<scene>/gs_model/point_cloud/iteration_<N>/point_cloud.ply
 #         (có checkpoint giữa chừng ở 7000/15000 — nếu train bị crash muộn hơn,
 #          vẫn dùng được model ở checkpoint gần nhất thay vì mất trắng)
+#
+# Dọn đĩa giữa các scene: sau khi train xong 1 scene, script tự xoá
+# colmap/dense/images/ của scene đó (bản ảnh full-res undistort chỉ train.py
+# cần — 04_render_test_poses.py/05_eval_metrics.py/06_package_submission.py
+# không đụng tới, chỉ cần point_cloud.ply). Quan trọng khi chạy nhiều scene
+# trong 1 lệnh (vd Bước 7/8): nếu không xoá, dữ liệu dense của các scene TRƯỚC
+# vẫn nằm nguyên trên đĩa cộng dồn tới khi hết dung lượng giữa chừng (đã từng
+# gặp "OSError: No space left on device" ngay tại checkpoint 15000 của scene
+# thứ 4 trong 1 lần chạy thật). Set CLEANUP_DENSE_IMAGES=0 nếu muốn giữ lại để
+# debug COLMAP sau này (vd nghi ngờ ảnh input sai).
 
 set -euo pipefail
 
@@ -57,6 +67,7 @@ ITERATIONS="${ITERATIONS:-30000}"
 SH_DEGREE="${SH_DEGREE:-3}"
 DENSIFY_GRAD_THRESHOLD="${DENSIFY_GRAD_THRESHOLD:-0.0002}"
 RESOLUTION="${RESOLUTION:--1}"
+CLEANUP_DENSE_IMAGES="${CLEANUP_DENSE_IMAGES:-1}"
 
 if [[ $# -eq 0 ]]; then
   echo "Cách dùng: $0 <scene1> [scene2 ...]" >&2
@@ -81,6 +92,19 @@ for SCENE in "$@"; do
   if [[ ! -d "$SOURCE_DIR/sparse/0" ]]; then
     echo "[BỎ QUA] $SCENE: chưa thấy $SOURCE_DIR/sparse/0 — chạy 01_run_colmap.py --scene $SCENE trước." >&2
     continue
+  fi
+
+  # Cảnh báo sớm nếu đĩa sắp hết TRƯỚC KHI đâm đầu vào train (có thể mất vài
+  # tiếng) — tốt hơn là để nó chết giữa chừng lúc lưu checkpoint như đã từng
+  # gặp. Ngưỡng 5GB là ước lượng an toàn (1 checkpoint point_cloud.ply có thể
+  # nặng cỡ vài trăm MB tới hơn 1GB tuỳ số Gaussian sau densify).
+  AVAIL_KB=$(df -Pk "$PIPELINE_DIR" | tail -1 | awk '{print $4}')
+  AVAIL_GB=$((AVAIL_KB / 1024 / 1024))
+  echo "[$SCENE] Đĩa còn trống: ${AVAIL_GB}GB"
+  if [[ "$AVAIL_GB" -lt 5 ]]; then
+    echo "[LỖI] Đĩa còn dưới 5GB trước khi train $SCENE — dừng lại để tránh hỏng notebook giữa chừng." >&2
+    echo "       Dọn bớt (vd rm -rf pipeline/work/<scene cũ>/colmap/dense/images) rồi chạy lại." >&2
+    exit 1
   fi
 
   # train.py in progress bar (tqdm) qua hàng chục nghìn iteration — rất dài nếu
@@ -127,4 +151,10 @@ for SCENE in "$@"; do
     exit $STATUS
   fi
   echo "-> Xong $SCENE. Model: $MODEL_DIR/point_cloud/iteration_$ITERATIONS/point_cloud.ply"
+
+  if [[ "$CLEANUP_DENSE_IMAGES" == "1" && -d "$SOURCE_DIR/images" ]]; then
+    FREED_KB=$(du -sk "$SOURCE_DIR/images" 2>/dev/null | awk '{print $1}')
+    rm -rf "$SOURCE_DIR/images"
+    echo "  [dọn đĩa] Đã xoá $SOURCE_DIR/images (~$((FREED_KB / 1024))MB, không cần cho render/eval/package) — giữ lại sparse/0."
+  fi
 done

@@ -5,6 +5,11 @@ Dataset/VAI_NVS_DATA/
 # Output trung gian của pipeline (COLMAP database, model 3DGS, ảnh render...) — sinh lại được, không phải source.
 pipeline/work/
 
+# Checkpoint (gs_model/) tải thủ công về từ Kaggle Output cho từng scene — nặng, chỉ lưu
+# local/Google Drive, không lưu trong repo (cấu trúc thư mục public_set/private_set1/<scene>
+# tự tạo lại bằng mkdir khi cần, xem hướng dẫn ở kaggle_private.ipynb Bước 7).
+checkpoints/
+
 # Repo train/render 3DGS — được clone lại mỗi lần chạy (xem 03_train_3dgs.sh), không lưu trong repo này.
 gaussian-splatting/
 

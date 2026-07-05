@@ -13,6 +13,7 @@ Yêu cầu đã chạy 04_render_test_poses.py cho scene đó trước (renders 
 pipeline/work/<scene>/renders/<stem>.png).
 """
 import argparse
+import csv
 import sys
 from pathlib import Path
 
@@ -71,6 +72,15 @@ def eval_scene(scene: Scene, renders_dir: Path, lpips_fn) -> list[tuple]:
     return rows
 
 
+def write_csv(csv_path: Path, rows: list[tuple]) -> None:
+    """Ghi điểm từng ảnh test ra CSV — dùng để vẽ biểu đồ/so sánh ảnh trong notebook
+    (xem cell sau Bước 6 của kaggle_public.ipynb), vì console chỉ in mean/min/max."""
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["image", "psnr", "ssim", "lpips"])
+        writer.writerows(rows)
+
+
 def print_stats(name: str, rows: list[tuple]):
     arr = np.array([[r[1], r[2], r[3]] for r in rows])
     print(f"\n=== {name}: {len(rows)} ảnh ===")
@@ -114,6 +124,7 @@ def main():
         rows = eval_scene(scene, renders_dir, lpips_fn)
         if rows:
             print_stats(scene.name, rows)
+            write_csv(renders_root / scene.name / "eval_metrics.csv", rows)
             all_rows.extend(rows)
 
     if all_rows:

@@ -19,7 +19,7 @@
 2. **`private_set1` (8 scene) không có ảnh test** — chỉ có `test_poses.csv`. Đây là tập phải nộp bài.
 3. ✅ **`sparse/0/` hợp lệ ở CẢ 13/13 scene** → **Pipeline dùng THẲNG sparse có sẵn cho mọi scene**, không cần tự chạy lại COLMAP — tiết kiệm rất nhiều thời gian GPU và giảm hẳn rủi ro lỗi (OOM, đăng ký thiếu ảnh...) ở bước SfM.
 4. Ảnh đã downscale sẵn về **1320×989**, không có EXIF/GPS.
-5. Vì dùng thẳng sparse do chính BTC tạo, pose trong `test_poses.csv` gần như chắc chắn cùng hệ toạ độ với sparse đó. Vẫn nên kiểm chứng bằng cách render thử 1 scene `public_set` và so PSNR với ảnh thật trước khi tin tưởng hoàn toàn cho private set (xem Tuần 0 bên dưới) — 1 bước sanity-check gọn, không phải điều kiện chặn cứng.
+5. ✅ **Đã xác nhận hệ toạ độ khớp** — chạy thật scene `hcm0031` (public_set): COLMAP 200/200 ảnh + 211262 điểm 3D, train 3DGS đủ 30000 iteration, render 50 pose test, eval ra PSNR mean=21.689 (min 19.260), SSIM mean=0.6823, LPIPS mean=0.1535 — số liệu hợp lý (không phải ảnh nhiễu loạn), xác nhận sparse của BTC và `test_poses.csv` cùng hệ toạ độ, yên tâm áp dụng cho private set (xem thêm mục 4, câu #1).
 6. Local machine hiện tại: GPU GTX 1650 4GB — **không đủ** để train 3DGS chất lượng tốt cho scene lớn. Cần thuê GPU ngoài (Colab Pro/Kaggle/RunPod/Vast.ai — 1×3090/4090/A4000 trở lên) cho bước train thật. Lưu ý: train 3DGS có thể bị **CUDA out of memory** ở scene nhiều chi tiết mảnh (khung thép/dây cáp BTS khiến densify sinh rất nhiều Gaussian) — `pipeline/scripts/03_train_3dgs.sh` đã có sẵn cờ giảm tải (`SH_DEGREE`, `DENSIFY_GRAD_THRESHOLD`, `RESOLUTION`) và tự lưu checkpoint giữa chừng.
 
 ## 3. Baseline được đề xuất (đơn giản, đủ để qua vòng 1)
@@ -49,11 +49,11 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 
 | # | Vấn đề | Cách xử lý |
 |---|---|---|
-| 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | **Sanity-check**: render 1 scene `public_set` và so PSNR với ảnh thật (Tuần 0) trước khi tin tưởng cho private set. |
-| 2 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | Đề bài viết "tên file theo `image_name`" nhưng ví dụ cấu trúc lại dùng `0001.png`. Hỏi BTC. Mặc định an toàn: dùng **nguyên văn chuỗi `image_name`** làm tên file (kể cả đuôi `.JPG`) vì đó là câu chữ literal của đề bài; làm script cấu hình được để đổi nhanh nếu BTC trả lời khác. |
-| 3 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | Dữ liệu thật không hề có tên `scene_001`. Gần như chắc chắn phải dùng **tên thư mục thật của từng scene** trong private_set1. Hỏi BTC nếu còn nghi ngờ, nhưng cứ code theo tên thật trước. |
-| 4 | PSNR/SSIM/LPIPS tính trên toàn ảnh hay loại trừ nền/sky? | Không ảnh hưởng cách nộp bài, chỉ ảnh hưởng cách ta tự đánh giá nội bộ trên `public_set`. Cứ tính trên toàn ảnh trước, không cần chờ trả lời mới bắt đầu. |
-| 5 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | Hỏi BTC qua kênh chính thức, làm song song trong lúc chờ trả lời (không phải rủi ro chặn tiến độ). |
+| 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | ✅ **Đã xác nhận** — xem mục 2, item 5 (render thật `hcm0031`, PSNR mean 21.689, hợp lý). |
+| 2 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | ✅ **Đã chốt: dùng `.JPG`** (giữ nguyên chuỗi `image_name`, không đổi đuôi) — khớp sẵn với `--filename_mode literal` (mặc định) của `06_package_submission.py`, không cần sửa code. |
+| 3 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | ✅ **Đã xác nhận: dùng tên thật** — đọc toàn văn đề bài chính thức (`Đề bài.md`), `scene_001`/`scene_002` chỉ là ví dụ minh hoạ định dạng, không phải yêu cầu đặt tên theo nghĩa đen. Đã code theo tên thật (`06_package_submission.py`). |
+| 4 | Công thức Score chính thức đã biết (`Score = 0.4×(1−LPIPS) + 0.3×SSIM + 0.3×PSNR_norm`, `PSNR_norm = clamp(PSNR/PSNR_max, 0, 1)`) — nhưng giá trị `PSNR_max` là bao nhiêu? | **Vẫn là ẩn số, có chủ đích** — BTC giấu giá trị này để tự chấm điểm nội bộ, không phải quên công bố. Đội tự chọn giá trị giả định (`--psnr_max 30.0` trong `05_eval_metrics.py`, kèm bảng độ nhạy in ra cho 20/25/30/35/40/50) để tự đánh giá tương đối — chấp nhận không khớp điểm thật 100%, không cần tiếp tục hỏi BTC về số này. |
+| 5 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | ✅ **Đã xác nhận: được dùng.** |
 
 **Nguyên tắc:** không có câu hỏi nào thực sự chặn tiến độ (blocking) — có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
 
@@ -61,25 +61,27 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 
 ### Tuần 0 — Dựng khung + sanity-check hệ toạ độ (04/07 – 06/07)
 
-- [ ] Cài môi trường: `pycolmap`, PyTorch + CUDA, clone `graphdeco-inria/gaussian-splatting`, `lpips`/`scikit-image` để tự tính metric (xem `pipeline/README.md`).
-- [ ] Chạy `01_run_colmap.py` cho 1 scene `public_set` (vd `hcm0031`/`HCM0204`, đã có sparse sẵn) — script tự nhận diện sparse hợp lệ và bỏ qua bước tự chạy COLMAP, chỉ undistort (nhanh).
-- [ ] **Sanity-check chính**: train 3DGS (`03_train_3dgs.sh`) + render (`04_render_test_poses.py`) + tính PSNR/SSIM (`05_eval_metrics.py`) trên đúng scene `public_set` đó, so với `test/images/` thật.
-  - PSNR hợp lý (không phải ảnh nhiễu loạn hoàn toàn) → xác nhận sparse của BTC + `test_poses.csv` cùng hệ toạ độ, yên tâm áp dụng cho private set.
-  - PSNR quá tệ/ảnh sai hoàn toàn → mới cần chạy sâu hơn `02_validate_frame.py` hoặc hỏi BTC.
-- [ ] Gửi câu hỏi #2, #3, #4, #5 (mục 4) cho BTC qua kênh hỗ trợ chính thức ngay trong tuần này.
+✅ Đã xong toàn bộ — môi trường, COLMAP, sanity-check train+render+eval trên `hcm0031`
+(xem mục 2 item 5), và cả 3 câu hỏi liên quan cũng đã được chốt (mục 4, câu #2/#3/#5).
 
 ### Tuần 1 — Baseline đầy đủ trên public_set (07/07 – 12/07)
 
-- [ ] Đóng gói pipeline thành script lặp qua từng scene: `colmap_run.py`, `train_3dgs.py`, `render_poses.py`, `eval_metrics.py`.
-- [ ] Chạy full baseline (đủ iteration, không rút gọn) trên cả 5 scene `public_set`, đo PSNR/SSIM/LPIPS trên `test/images/` thật.
-- [ ] Đo thời gian chạy thực tế/scene (COLMAP + train + render) → nhân với 8 scene private để ước lượng tổng thời gian cần, đối chiếu deadline 30/07 và tốc độ GPU thuê được. Đây là input để quyết định số iteration/độ phân giải dùng cho private set.
+- [ ] Chạy `pipeline/kaggle_public.ipynb` cho từng scene còn lại của `public_set` (đổi
+      biến `SCENE`, 1 phiên Kaggle/scene) để có đủ PSNR/SSIM/LPIPS trên cả 5 scene —
+      hiện mới xong `hcm0031`, còn `hcm0034`, `HCM0181`, `HCM0193`, `HCM0204`.
 - [ ] 12/07: theo dõi livestream giải thích thể lệ — cập nhật ngay nếu có thay đổi format/luật.
 
 ### Tuần 2 — Áp dụng cho private_set1 + nộp bài đầu tiên càng sớm càng tốt (13/07 – 19/07)
 
-- [ ] Chạy pipeline cho toàn bộ 8 scene của `private_set1` (đều dùng thẳng sparse có sẵn — `01_run_colmap.py` tự nhận diện, chỉ cần `--force_own_colmap` nếu nghi ngờ 1 scene cụ thể nào đó).
-- [ ] Viết `check_submission.py`: kiểm tra tự động — đủ 8 thư mục scene, đủ số ảnh đúng bằng số dòng trong `test_poses.csv` từng scene, đúng kích thước width×height từng ảnh, đúng tên file, không thiếu/thừa.
-- [ ] Đóng gói `submission_round1.zip` và **nộp thử sớm nhất có thể** trong tuần này (không đợi tới hạn) để xác nhận: hệ thống chấm chấp nhận format, không lỗi gì bất ngờ. Nhớ giới hạn 5 lần/ngày + chờ 600s giữa các lần.
+- [ ] Chạy `pipeline/kaggle_private.ipynb` cho từng scene của `private_set1` (đổi biến
+      `SCENE`, 1 phiên Kaggle/scene, không có eval vì private không có ground-truth —
+      chỉ xem render trực quan) — có thể chạy song song 2 phiên Kaggle để rút ngắn thời gian.
+- [ ] Dùng `pipeline/kaggle_submission.ipynb` để tải 8 checkpoint (qua Google Drive hoặc
+      `checkpoints/` cục bộ nếu đã stage sẵn), re-render, rồi đóng gói bằng
+      `pipeline/scripts/06_package_submission.py` (đã tự kiểm tra đủ 8 thư mục/đúng số
+      ảnh/kích thước theo `test_poses.csv` — dùng `--check_only` để verify lại 1 zip đã
+      đóng). **Nộp thử sớm nhất có thể** trong tuần này, nhớ giới hạn 5 lần/ngày + chờ
+      600s giữa các lần.
 
 ### Tuần 3 — Tinh chỉnh chất lượng (20/07 – 27/07)
 
@@ -109,3 +111,41 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 - [ ] Tên file đúng theo quy ước đã chốt với BTC (mục 4, câu hỏi #2).
 - [ ] Zip không chứa thư mục rác kiểu `__MACOSX/` (nếu nén trên máy Mac, cẩn thận zip mặc định của Finder).
 - [ ] Test giải nén lại zip ở máy khác/thư mục sạch để chắc chắn cấu trúc đúng như BTC yêu cầu.
+
+## 8. Tiến độ thực tế & hướng cải thiện thêm (tham chiếu)
+
+1. **Workflow 3-notebook** thay `kaggle_pipeline.ipynb` cũ (đã xoá): `pipeline/kaggle_public.ipynb`
+   / `pipeline/kaggle_private.ipynb` / `pipeline/kaggle_submission.ipynb` — mỗi notebook
+   train đúng 1 scene/phiên Kaggle (đổi biến `SCENE`), vì tổng thời gian train 13 scene
+   (~37.5 GPU-giờ, xem item 2 dưới) không vừa 1 phiên Kaggle (~12h). `checkpoints/`
+   (thư mục gốc, git-ignore) là nơi stage cục bộ các `gs_model/` tải về từ Kaggle Output.
+2. **Thời gian train thật đo được**: ~2.88 giờ/scene (30000 iteration, đo từ log thật
+   3 scene đã train xong + 1 scene ngoại suy) → tổng ước tính ~37.5 GPU-giờ cho 13 scene.
+3. **Bài học sự cố hết đĩa**: chạy gộp nhiều scene 1 lần từng crash thật
+   ("OSError: No space left on device") ở scene thứ 4, ngay tại checkpoint iteration
+   15000, do không dọn `colmap/dense/images/` giữa các scene. Đã sửa trong
+   `pipeline/scripts/03_train_3dgs.sh`: `CLEANUP_DENSE_IMAGES` (mặc định bật) tự xoá
+   thư mục nặng sau mỗi scene, cộng thêm kiểm tra dung lượng đĩa trước khi train mỗi
+   scene (báo lỗi sớm nếu còn dưới 5GB).
+4. `pipeline/scripts/06_package_submission.py` đã thay thế vai trò `check_submission.py`
+   dự kiến ban đầu ở mục 5 (Tuần 2) — tự kiểm tra đủ 8 thư mục/đúng số ảnh/kích thước,
+   có `--check_only` để verify lại 1 zip đã đóng.
+5. **Khoảng trống về khả năng tái lập** (đề bài mục 10.3 — BTC có quyền yêu cầu mã
+   nguồn/config/danh sách thư viện+version/checkpoint/training log): `git clone` repo
+   `graphdeco-inria/gaussian-splatting` và `pip install` trong các notebook hiện chưa
+   pin commit hash/version cụ thể — nếu upstream đổi code sau này, chạy lại notebook có
+   thể huấn luyện trên code khác đi. Chưa sửa — nên làm nếu muốn an toàn trước yêu cầu
+   tái lập của BTC.
+6. **Nhánh `feature/antenna-region-focus`** (đã đẩy lên origin, **chưa merge vào `main`**)
+   — hướng cải thiện cho artifact mờ ở ăn-ten/vật thể mảnh quan sát được trên render
+   thật của `hcm0031`:
+   - `pipeline/scripts/07_build_antenna_weights.py` — từ 1 ảnh + khung pixel người dùng
+     khoanh quanh ăn-ten, suy ra bbox 3D từ điểm sparse tương ứng, chiếu ra bbox 2D +
+     độ phủ trên từng ảnh train.
+   - `pipeline/scripts/apply_antenna_patch.py` — vá `train.py` gốc (8 chỗ, idempotent):
+     thêm L1 loss có trọng số trong vùng ăn-ten + lấy mẫu camera có trọng số ưu tiên
+     view thấy rõ ăn-ten.
+   - Cờ `ANTENNA_FOCUS`/`ENABLE_ANTENNA_FOCUS` mặc định **tắt** trong `03_train_3dgs.sh`
+     và 2 notebook train — không ảnh hưởng hành vi mặc định nếu không bật.
+   - **Trạng thái: mới kiểm thử bằng mock/logic (chưa chạy GPU/Kaggle thật), chưa merge
+     vào `main`** — là bước tiếp theo khả dụng, không phải việc đã xong.

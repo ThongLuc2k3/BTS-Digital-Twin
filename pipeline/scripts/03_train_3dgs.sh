@@ -3,9 +3,20 @@
 # graphdeco-inria/gaussian-splatting (không tự viết lại trainer — quá nhiều chi
 # tiết dễ sai: densification, adaptive density control, SH coefficients...).
 #
+# HƯỚNG ĐI MIP-SPLATTING (xem Kết quả/Hướng đi.md mục 2, hạng #2): repo Inria GỐC
+# (từ bản cập nhật 10/2024, commit đã pin bên dưới) đã TÍCH HỢP SẴN đúng "EWA Filter"
+# của Mip-Splatting làm cờ `--antialiasing` (đối chiếu trực tiếp README.md +
+# gaussian_renderer/__init__.py của repo thật, không suy đoán) — KHÔNG cần clone
+# riêng autonomousvision/mip-splatting hay đổi rasterizer. Cùng bản này cũng có sẵn
+# depth regularization (`--depths`, priority #3) và exposure compensation
+# (`--train_test_exp`, priority #5) — cả 3 hướng ưu tiên trong Hướng đi.md giờ chỉ
+# còn là bật cờ + (với depth) chuẩn bị depth map trước, không cần viết lại loss/model.
+#
 # Cài đặt 1 lần (máy có GPU CUDA, chạy trước khi dùng script này):
 #   git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting.git
 #   cd gaussian-splatting
+#   git checkout 54c035f7834b564019656c3e3fcc3646292f727d   # PIN commit đã xác nhận có antialiasing/depth/exposure (xem KE_HOACH_VONG1.md)
+#   git submodule update --init --recursive                  # re-sync submodule đúng theo commit vừa checkout
 #   conda env create --file environment.yml   # hoặc tự pip install theo requirements.txt của repo
 #   conda activate gaussian_splatting
 #
@@ -13,10 +24,20 @@
 #   export GS_REPO=/path/to/gaussian-splatting
 #
 # Cách dùng:
-#   ./03_train_3dgs.sh HCM0181                 # train 1 scene
+#   ./03_train_3dgs.sh HCM0181                 # train 1 scene (mặc định: antialiasing BẬT)
 #   ./03_train_3dgs.sh HCM0181 HCM0193 hcm0031 # train nhiều scene liên tiếp
 #   ITERATIONS=15000 ./03_train_3dgs.sh HCM0181   # đổi số iteration (mặc định 30000 của repo)
 #   PROGRESS_INTERVAL=30 ./03_train_3dgs.sh HCM0181  # in tiến độ mỗi 30s thay vì 60s mặc định
+#   ANTIALIASING=0 ./03_train_3dgs.sh HCM0181     # tắt antialiasing để A/B so với bản có (mặc định BẬT)
+#   DEPTH_PRIOR=1 ./03_train_3dgs.sh HCM0181      # bật depth regularization — CẦN chạy
+#                                                  # 08_generate_depth_priors.sh cho scene này TRƯỚC
+#                                                  # (tạo work/<scene>/colmap/dense/depths_any/ +
+#                                                  # sparse/0/depth_params.json), không có thì tự bỏ qua + cảnh báo
+#   EXPOSURE_COMP=1 ./03_train_3dgs.sh HCM0181    # bật exposure/appearance compensation (--train_test_exp,
+#                                                  # đã đối chiếu source: an toàn dùng chung với KHÔNG --eval,
+#                                                  # không ảnh hưởng loss vòng lặp chính — chỉ tối ưu thêm
+#                                                  # affine exposure/ảnh train, lúc render pose mới vẫn bỏ qua
+#                                                  # exposure vì pose đó không có exposure đã học, xem 04_render_test_poses.py)
 #
 # Nếu bị "CUDA out of memory" (hay gặp với scene nhiều chi tiết mảnh — dây cáp,
 # khung thép BTS — vì số Gaussian sinh ra qua densify tăng rất nhanh), thử lần
@@ -50,6 +71,12 @@
 # cho train.py (yêu cầu đã chạy apply_antenna_patch.py trên $GS_REPO trước, script
 # tự kiểm tra và báo lỗi rõ nếu chưa vá). Scene nào chưa có file đó thì train bình
 # thường (không lỗi cả loop). ANTENNA_WEIGHT (tuỳ chọn) ghi đè hệ số nhân loss.
+# LƯU Ý TƯƠNG THÍCH: apply_antenna_patch.py được viết/test trên 1 bản train.py CŨ
+# hơn commit đã pin ở trên (bản đó chưa có antialiasing/depth-reg/exposure/fused_ssim/
+# sparse_adam) — patch vá theo ngữ cảnh dòng lệnh cụ thể nên CÓ THỂ không áp được sạch
+# (hoặc áp sai chỗ) lên commit mới. Nếu cần dùng ANTENNA_FOCUS=1 CÙNG LÚC với nhánh
+# Mip-Splatting này, hãy tự kiểm tra lại `apply_antenna_patch.py --gs_repo "$GS_REPO"`
+# chạy sạch không lỗi trước, đừng mặc định nó vẫn đúng.
 
 set -euo pipefail
 
@@ -76,6 +103,9 @@ DENSIFY_GRAD_THRESHOLD="${DENSIFY_GRAD_THRESHOLD:-0.0002}"
 RESOLUTION="${RESOLUTION:--1}"
 CLEANUP_DENSE_IMAGES="${CLEANUP_DENSE_IMAGES:-1}"
 ANTENNA_FOCUS="${ANTENNA_FOCUS:-0}"
+ANTIALIASING="${ANTIALIASING:-1}"
+DEPTH_PRIOR="${DEPTH_PRIOR:-0}"
+EXPOSURE_COMP="${EXPOSURE_COMP:-0}"
 
 if [[ $# -eq 0 ]]; then
   echo "Cách dùng: $0 <scene1> [scene2 ...]" >&2
@@ -85,6 +115,18 @@ fi
 if [[ "$ANTENNA_FOCUS" == "1" ]] && ! grep -q "antenna_weights_json" "$GS_REPO/train.py"; then
   echo "Lỗi: ANTENNA_FOCUS=1 nhưng $GS_REPO/train.py chưa được vá — chạy trước:" >&2
   echo "  python apply_antenna_patch.py --gs_repo \"$GS_REPO\"" >&2
+  exit 1
+fi
+
+if [[ "$ANTIALIASING" == "1" ]] && ! grep -q "antialiasing" "$GS_REPO/arguments/__init__.py" 2>/dev/null; then
+  echo "Lỗi: ANTIALIASING=1 nhưng \$GS_REPO có vẻ là bản clone CŨ (trước 10/2024, chưa có cờ" >&2
+  echo "  --antialiasing). Checkout đúng commit đã pin (xem comment đầu file này) rồi thử lại," >&2
+  echo "  hoặc set ANTIALIASING=0 nếu cố ý muốn train bản không chống alias để so sánh." >&2
+  exit 1
+fi
+if [[ "$DEPTH_PRIOR" == "1" ]] && ! grep -q "depth_l1_weight" "$GS_REPO/train.py" 2>/dev/null; then
+  echo "Lỗi: DEPTH_PRIOR=1 nhưng \$GS_REPO chưa có depth regularization (bản clone cũ) — checkout" >&2
+  echo "  đúng commit đã pin rồi thử lại." >&2
   exit 1
 fi
 
@@ -135,12 +177,33 @@ for SCENE in "$@"; do
     fi
   fi
 
+  MIP_ARGS=()
+  if [[ "$ANTIALIASING" == "1" ]]; then
+    MIP_ARGS+=(--antialiasing)
+  fi
+
+  DEPTH_DIR="$SOURCE_DIR/depths_any"
+  DEPTH_PARAMS="$SOURCE_DIR/sparse/0/depth_params.json"
+  if [[ "$DEPTH_PRIOR" == "1" ]]; then
+    if [[ -d "$DEPTH_DIR" && -f "$DEPTH_PARAMS" ]]; then
+      MIP_ARGS+=(--depths depths_any)
+      echo "  [depth-prior] $SCENE: dùng $DEPTH_DIR + $DEPTH_PARAMS"
+    else
+      echo "  [depth-prior] $SCENE: THIẾU $DEPTH_DIR hoặc $DEPTH_PARAMS — train KHÔNG depth prior" \
+           "(chạy 08_generate_depth_priors.sh $SCENE trước nếu muốn bật)."
+    fi
+  fi
+
+  if [[ "$EXPOSURE_COMP" == "1" ]]; then
+    MIP_ARGS+=(--train_test_exp)
+  fi
+
   # train.py in progress bar (tqdm) qua hàng chục nghìn iteration — rất dài nếu
   # hiện hết ra console/notebook, nên vẫn redirect toàn bộ ra file log. Nhưng
   # chạy nền (&) rồi định kỳ lấy đúng số "hiện tại/ITERATIONS" cuối cùng trong
   # log để in 1 dòng gọn ra console — biết đang chạy tới đâu mà không bị spam.
   # Đổi tần suất bằng PROGRESS_INTERVAL=<giây> (mặc định 60s).
-  echo "===== Train 3DGS: $SCENE ($ITERATIONS iterations, sh_degree=$SH_DEGREE, densify_grad_threshold=$DENSIFY_GRAD_THRESHOLD) — log: $LOG_FILE ====="
+  echo "===== Train 3DGS: $SCENE ($ITERATIONS iterations, sh_degree=$SH_DEGREE, densify_grad_threshold=$DENSIFY_GRAD_THRESHOLD, antialiasing=$ANTIALIASING, depth_prior=$DEPTH_PRIOR, exposure_comp=$EXPOSURE_COMP) — log: $LOG_FILE ====="
   python "$GS_REPO/train.py" \
     -s "$SOURCE_DIR" \
     -m "$MODEL_DIR" \
@@ -151,6 +214,7 @@ for SCENE in "$@"; do
     --densify_grad_threshold "$DENSIFY_GRAD_THRESHOLD" \
     --resolution "$RESOLUTION" \
     "${ANTENNA_ARGS[@]}" \
+    "${MIP_ARGS[@]}" \
     > "$LOG_FILE" 2>&1 &
   # Không dùng --eval: ta muốn dùng TOÀN BỘ ảnh train/images/ để train (không
   # giữ lại phần nào làm test nội bộ của repo), vì việc tự đánh giá chất lượng
@@ -185,5 +249,9 @@ for SCENE in "$@"; do
     FREED_KB=$(du -sk "$SOURCE_DIR/images" 2>/dev/null | awk '{print $1}')
     rm -rf "$SOURCE_DIR/images"
     echo "  [dọn đĩa] Đã xoá $SOURCE_DIR/images (~$((FREED_KB / 1024))MB, không cần cho render/eval/package) — giữ lại sparse/0."
+  fi
+  if [[ "$CLEANUP_DENSE_IMAGES" == "1" && -d "$DEPTH_DIR" ]]; then
+    rm -rf "$DEPTH_DIR"
+    echo "  [dọn đĩa] Đã xoá $DEPTH_DIR (depth map chỉ cần lúc train, không cần cho render/eval/package)."
   fi
 done

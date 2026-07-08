@@ -52,7 +52,7 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 | 1 | Hệ toạ độ sparse có sẵn có khớp với `test_poses.csv` không? | ✅ **Đã xác nhận** — xem mục 2, item 5 (render thật `hcm0031`, PSNR mean 21.689, hợp lý). |
 | 2 | Tên file PNG nộp bài: giữ nguyên `image_name` (có đuôi `.JPG`) hay đổi đuôi `.png`? | ✅ **Đã chốt: dùng `.JPG`** (giữ nguyên chuỗi `image_name`, không đổi đuôi) — khớp sẵn với `--filename_mode literal` (mặc định) của `06_package_submission.py`, không cần sửa code. |
 | 3 | Tên thư mục scene trong zip nộp: `scene_001` (ví dụ minh hoạ trong đề) hay tên thật `HCM0249`, `HNI0131`...? | ✅ **Đã xác nhận: dùng tên thật** — đọc toàn văn đề bài chính thức (`Đề bài.md`), `scene_001`/`scene_002` chỉ là ví dụ minh hoạ định dạng, không phải yêu cầu đặt tên theo nghĩa đen. Đã code theo tên thật (`06_package_submission.py`). |
-| 4 | Công thức Score chính thức đã biết (`Score = 0.4×(1−LPIPS) + 0.3×SSIM + 0.3×PSNR_norm`, `PSNR_norm = clamp(PSNR/PSNR_max, 0, 1)`) — nhưng giá trị `PSNR_max` là bao nhiêu? | **Vẫn là ẩn số, có chủ đích** — BTC giấu giá trị này để tự chấm điểm nội bộ, không phải quên công bố. Đội tự chọn giá trị giả định (`--psnr_max 30.0` trong `05_eval_metrics.py`, kèm bảng độ nhạy in ra cho 20/25/30/35/40/50) để tự đánh giá tương đối — chấp nhận không khớp điểm thật 100%, không cần tiếp tục hỏi BTC về số này. |
+| 4 | Công thức Score chính thức đã biết (`Score = 0.4×(1−LPIPS) + 0.3×SSIM + 0.3×PSNR_norm`, `PSNR_norm = clamp(PSNR/PSNR_max, 0, 1)`) — nhưng giá trị `PSNR_max` là bao nhiêu? | ✅ **Đã suy ra được, không còn là ẩn số**: từ kết quả chấm thật trên `private_set1` (Score=58.67320, PSNR=19.471466, SSIM=0.563734, LPIPS=0.248042 — xem `Kết quả/Kết quả chấm.png`), giải ngược công thức ra `PSNR_max ≈ 50.0` (sai số <0.001%). `05_eval_metrics.py` đã đổi mặc định từ `--psnr_max 30.0` sang `--psnr_max 50.0` (chi tiết ở `Kết quả/Hướng đi.md` mục 1). |
 | 5 | Có được dùng AI hỗ trợ code (Claude Code, Copilot...) không? | ✅ **Đã xác nhận: được dùng.** |
 
 **Nguyên tắc:** không có câu hỏi nào thực sự chặn tiến độ (blocking) — có thể vừa hỏi BTC vừa tiếp tục code song song với giả định mặc định.
@@ -130,15 +130,16 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
 4. `pipeline/scripts/06_package_submission.py` đã thay thế vai trò `check_submission.py`
    dự kiến ban đầu ở mục 5 (Tuần 2) — tự kiểm tra đủ 8 thư mục/đúng số ảnh/kích thước,
    có `--check_only` để verify lại 1 zip đã đóng.
-5. **Khoảng trống về khả năng tái lập** (đề bài mục 10.3 — BTC có quyền yêu cầu mã
-   nguồn/config/danh sách thư viện+version/checkpoint/training log): `git clone` repo
-   `graphdeco-inria/gaussian-splatting` và `pip install` trong các notebook hiện chưa
-   pin commit hash/version cụ thể — nếu upstream đổi code sau này, chạy lại notebook có
-   thể huấn luyện trên code khác đi. Chưa sửa — nên làm nếu muốn an toàn trước yêu cầu
-   tái lập của BTC.
-6. **Nhánh `feature/antenna-region-focus`** (đã đẩy lên origin, **chưa merge vào `main`**)
-   — hướng cải thiện cho artifact mờ ở ăn-ten/vật thể mảnh quan sát được trên render
-   thật của `hcm0031`:
+5. ✅ **Khả năng tái lập — ĐÃ pin commit** cho `graphdeco-inria/gaussian-splatting`:
+   `54c035f7834b564019656c3e3fcc3646292f727d` (xem mục 7 bên dưới — commit này còn
+   được chọn vì nó là bản ĐẦU TIÊN có antialiasing/depth-reg/exposure, không phải
+   chọn tuỳ ý). `03_train_3dgs.sh`, `pipeline/README.md`, `pipeline/requirements.txt`
+   và cả 3 notebook Kaggle đều đã cập nhật lệnh `git checkout <commit>` sau khi
+   clone. Depth-Anything-V2 (dùng cho depth prior, mục 7) hiện CHƯA pin commit
+   (repo ít thay đổi hơn, rủi ro thấp hơn) — có thể pin thêm sau nếu cần chắc chắn
+   tuyệt đối.
+6. **Nhánh `feature/antenna-region-focus`** — hướng cải thiện cho artifact mờ ở
+   ăn-ten/vật thể mảnh quan sát được trên render thật của `hcm0031`:
    - `pipeline/scripts/07_build_antenna_weights.py` — từ 1 ảnh + khung pixel người dùng
      khoanh quanh ăn-ten, suy ra bbox 3D từ điểm sparse tương ứng, chiếu ra bbox 2D +
      độ phủ trên từng ảnh train.
@@ -148,4 +149,24 @@ Vì sao chọn 3DGS thay vì NeRF/Nerfacto: train nhanh hơn nhiều (phút thay
    - Cờ `ANTENNA_FOCUS`/`ENABLE_ANTENNA_FOCUS` mặc định **tắt** trong `03_train_3dgs.sh`
      và 2 notebook train — không ảnh hưởng hành vi mặc định nếu không bật.
    - **Trạng thái: mới kiểm thử bằng mock/logic (chưa chạy GPU/Kaggle thật), chưa merge
-     vào `main`** — là bước tiếp theo khả dụng, không phải việc đã xong.
+     vào `main`.** ⚠️ Nhánh đó đã được **đổi tên thành `feature/mip-splatting`** và
+     pivot hẳn sang hướng Mip-Splatting (mục 7) — `apply_antenna_patch.py` viết cho
+     1 bản `train.py` CŨ hơn commit vừa pin ở mục 5, **chưa được kiểm chứng lại** có
+     áp sạch lên bản mới hay không. Muốn tiếp tục hướng antenna-focus, hãy tự chạy
+     `apply_antenna_patch.py --gs_repo "$GS_REPO"` để kiểm tra trước khi tin nó vẫn đúng.
+7. **Hướng đi Mip-Splatting** (`Kết quả/Hướng đi.md` mục 2, hạng #2 — nhánh
+   `feature/mip-splatting`, trước đây là `feature/antenna-region-focus`): phát hiện
+   quan trọng — repo GỐC `graphdeco-inria/gaussian-splatting` (bản cập nhật 10/2024,
+   đã đối chiếu trực tiếp source: `README.md`, `gaussian_renderer/__init__.py`,
+   `arguments/__init__.py`, `train.py`, `utils/make_depth_scale.py`) **đã tích hợp
+   sẵn** đúng "EWA Filter" của Mip-Splatting (`--antialiasing`), depth regularization
+   (`--depths`, dùng Depth Anything V2) và exposure compensation (`--train_test_exp`)
+   — KHÔNG cần clone riêng `autonomousvision/mip-splatting` hay đổi rasterizer, chỉ
+   cần bật cờ + (cho depth) chuẩn bị depth map trước. Đã pin commit
+   `54c035f7834b564019656c3e3fcc3646292f727d` (đầu tiên có đủ 3 tính năng), thêm
+   `pipeline/scripts/08_generate_depth_priors.py` (sinh depth map 16-bit đúng chuẩn
+   `make_depth_scale.py` cần — **không** dùng thẳng `Depth-Anything-V2/run.py` vì
+   script đó lưu depth 8-bit, sai định dạng 16-bit mà `make_depth_scale.py` cần,
+   gây mất độ chính xác âm thầm nếu dùng nhầm). Chi tiết cờ mới: xem
+   `pipeline/scripts/03_train_3dgs.sh` (biến `ANTIALIASING`/`DEPTH_PRIOR`/`EXPOSURE_COMP`)
+   và `pipeline/README.md`.

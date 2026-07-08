@@ -8,7 +8,7 @@ Không dùng được cho private_set1 (không có ảnh GT) — mục đích c�
 Cách dùng:
     python 05_eval_metrics.py --scene HCM0181
     python 05_eval_metrics.py --all_public
-    python 05_eval_metrics.py --all_public --psnr_max 25   # tự chọn PSNR_max khác
+    python 05_eval_metrics.py --all_public --psnr_max 30   # ép dùng giá trị khác để so sánh
 
 Yêu cầu đã chạy 04_render_test_poses.py cho scene đó trước (renders nằm ở
 pipeline/work/<scene>/renders/<stem>.png).
@@ -19,15 +19,13 @@ chính thức của BTC (Đề bài.md mục 8.4):
     Score = 0.4 * (1 - LPIPS) + 0.3 * SSIM + 0.3 * PSNR_norm
     PSNR_norm = clamp(PSNR / PSNR_max, 0, 1)
 
-QUAN TRỌNG: đề bài KHÔNG công bố giá trị PSNR_max cụ thể (chỉ ghi "ngưỡng được
-lựa chọn trước") — --psnr_max ở đây chỉ là GIẢ ĐỊNH để bạn tự ước lượng thứ hạng
-tương đối giữa các lần thử nghiệm, KHÔNG phải số chính thức của BTC. Mặc định
-30.0 vì đó là mức PSNR "rất tốt" cho cảnh ngoài trời phức tạp theo benchmark
-3DGS công khai (Mip-NeRF360 outdoor ~24-27dB, Tanks&Temples ~23dB) — đủ cao để
-không bị đạt trần dễ dàng, đủ thấp để không "chôn" kết quả tốt về gần 0. Script
-tự in thêm bảng Score ở vài giá trị PSNR_max khác để thấy độ nhạy — nếu có dịp
-hỏi BTC được, nên xác nhận lại số thật (xem KE_HOACH_VONG1.md mục "Những điều
-cần tự xác nhận thêm").
+`PSNR_max` ĐÃ ĐƯỢC SUY RA từ kết quả chấm thật (không còn là giả định mù):
+bản nộp `submission_round1.zip` (private_set1, 8/8 scene khớp) được BTC chấm
+Score=58.67320 với PSNR=19.471466, SSIM=0.563734, LPIPS=0.248042 (xem
+`Kết quả/Kết quả chấm.png` và `Kết quả/Hướng đi.md` mục 1). Giải ngược phương
+trình trên ra `PSNR_max ≈ 50.0000` (sai số <0.001%) — gần như chắc chắn BTC
+dùng đúng 50. Mặc định script đổi từ 30.0 sang **50.0**. Vẫn giữ `--psnr_max`
+để ép thử giá trị khác nếu muốn đối chiếu, và bảng độ nhạy vẫn in kèm bên dưới.
 """
 import argparse
 import csv
@@ -108,7 +106,8 @@ def write_csv(csv_path: Path, rows: list[tuple], psnr_max: float) -> None:
             writer.writerow([stem, psnr_v, ssim_v, lpips_v, score])
 
 
-def print_stats(name: str, rows: list[tuple], psnr_max: float):
+def print_stats(name: str, rows: list[tuple], psnr_max: float) -> float:
+    """In thống kê và trả về Score mean của tập rows này (dùng để gộp theo scene ở main())."""
     arr = np.array([[r[1], r[2], r[3]] for r in rows])
     print(f"\n=== {name}: {len(rows)} ảnh ===")
     print(f"  PSNR  mean={arr[:, 0].mean():.3f}  min={arr[:, 0].min():.3f}")
@@ -117,14 +116,16 @@ def print_stats(name: str, rows: list[tuple], psnr_max: float):
         print(f"  LPIPS mean={arr[:, 2].mean():.4f}  max={arr[:, 2].max():.4f}")
 
     scores = [compute_score(r[1], r[2], r[3], psnr_max) for r in rows]
-    print(f"  Score mean={np.mean(scores):.4f}  min={np.min(scores):.4f}  "
-          f"(công thức BTC mục 8.4, PSNR_max={psnr_max} — GIẢ ĐỊNH, xem cảnh báo đầu file)")
+    score_mean = float(np.mean(scores))
+    print(f"  Score mean={score_mean:.4f}  min={np.min(scores):.4f}  "
+          f"(công thức BTC mục 8.4, PSNR_max={psnr_max} — suy ra từ điểm chấm thật, xem docstring đầu file)")
 
-    print("  Độ nhạy Score theo PSNR_max khác (để tham khảo, không phải điểm chính thức):")
+    print("  Độ nhạy Score theo PSNR_max khác (để đối chiếu, không phải điểm chính thức):")
     for candidate in (20.0, 25.0, 30.0, 35.0, 40.0, 50.0):
         alt_scores = [compute_score(r[1], r[2], r[3], candidate) for r in rows]
         marker = " <- đang dùng" if candidate == psnr_max else ""
         print(f"    PSNR_max={candidate:5.1f} -> Score mean={np.mean(alt_scores):.4f}{marker}")
+    return score_mean
 
 
 def main():
@@ -134,9 +135,9 @@ def main():
     g.add_argument("--all_public", action="store_true")
     ap.add_argument("--renders_root", default=None, help="Mặc định pipeline/work")
     ap.add_argument("--no_lpips", action="store_true", help="Bỏ qua LPIPS (nếu chưa cài package lpips)")
-    ap.add_argument("--psnr_max", type=float, default=30.0,
-                     help="Ngưỡng chuẩn hoá PSNR cho công thức Score (mặc định 30.0 — "
-                          "GIẢ ĐỊNH, BTC không công bố số thật, xem docstring đầu file)")
+    ap.add_argument("--psnr_max", type=float, default=50.0,
+                     help="Ngưỡng chuẩn hoá PSNR cho công thức Score (mặc định 50.0 — "
+                          "suy ra từ điểm chấm thật trên private_set1, xem docstring đầu file)")
     args = ap.parse_args()
 
     scenes = [get_scene(args.scene)] if args.scene else all_scenes("public")
@@ -153,6 +154,7 @@ def main():
                 lpips_fn = lpips_fn.cuda()
 
     all_rows = []
+    scene_scores = []  # [(scene_name, n_images, score_mean_of_scene)], dùng để gộp KHÔNG trọng số theo scene
     for scene in scenes:
         if scene.split != "public":
             print(f"[BỎ QUA] {scene.name}: không phải public_set, không có ảnh GT.")
@@ -163,12 +165,26 @@ def main():
             continue
         rows = eval_scene(scene, renders_dir, lpips_fn)
         if rows:
-            print_stats(scene.name, rows, args.psnr_max)
+            scene_score = print_stats(scene.name, rows, args.psnr_max)
             write_csv(renders_root / scene.name / "eval_metrics.csv", rows, args.psnr_max)
             all_rows.extend(rows)
+            scene_scores.append((scene.name, len(rows), scene_score))
 
     if all_rows:
-        print_stats("TRUNG BÌNH TOÀN BỘ", all_rows, args.psnr_max)
+        print_stats("TRUNG BÌNH THEO ẢNH (chỉ để chẩn đoán — trọng số lệch theo số ảnh/scene)", all_rows, args.psnr_max)
+
+    if len(scene_scores) > 1:
+        # Đề bài.md mục 8.4: "Điểm trên bảng xếp hạng là điểm trung bình của toàn bộ CÁC SCENE"
+        # -> mỗi scene có trọng số bằng nhau, KHÔNG tỉ lệ theo số ảnh test của scene đó
+        # (số ảnh dao động 26-60/scene ở private_set1 -> gộp phẳng theo ảnh sẽ lệch số dự đoán).
+        official_style_mean = float(np.mean([s[2] for s in scene_scores]))
+        print(f"\n=== DỰ ĐOÁN ĐIỂM LEADERBOARD (trung bình theo SCENE, khớp công thức mục 8.4) ===")
+        for name, n, s in scene_scores:
+            print(f"    {name:10s}  {n:2d} ảnh  Score={s:.4f}")
+        print(f"  -> Score dự đoán = {official_style_mean:.4f}  (~{official_style_mean * 100:.3f} điểm)")
+    elif len(scene_scores) == 1:
+        print(f"\n[LƯU Ý] Chỉ có 1 scene ({scene_scores[0][0]}) — cần chạy đủ nhiều scene public "
+              f"(--all_public) để có ước lượng Score trung bình theo scene đáng tin cậy hơn.")
 
 
 if __name__ == "__main__":

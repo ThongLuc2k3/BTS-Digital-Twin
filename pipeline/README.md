@@ -24,9 +24,17 @@ file đó):
   trước) — `--depths depths_any`.
 - `EXPOSURE_COMP=1` (mặc định tắt) — `--train_test_exp`.
 
-`04_render_test_poses.py` tự đọc `cfg_args` trong `gs_model/` để biết đúng
-`antialiasing`/`sh_degree` đã dùng lúc train — không cần tự nhớ truyền lại cờ khi
-render (tránh lệch cấu hình train/render một cách âm thầm).
+`04_render_test_poses.py` tự đọc `sh_degree` từ `cfg_args` và `antialiasing` từ
+`pipeline_train_flags.json` (file `03_train_3dgs.sh` tự ghi thêm sau khi train
+xong) trong `gs_model/` để biết đúng cấu hình đã dùng lúc train — không cần tự
+nhớ truyền lại cờ khi render. **Lưu ý (bug đã gặp thật, đã vá)**: `cfg_args` của
+repo Inria gốc chỉ lưu `ModelParams`, KHÔNG lưu `antialiasing` (field của
+`PipelineParams`) — trước khi có `pipeline_train_flags.json`, script từng âm
+thầm coi `antialiasing=False` dù lúc train đã bật, làm méo hoàn toàn
+PSNR/SSIM/LPIPS mà không báo lỗi. Model train bằng bản `03_train_3dgs.sh` cũ
+(thiếu file này) sẽ được cảnh báo rõ khi render — cần re-render bằng
+`--antialiasing on` (nếu train với `ANTIALIASING=1`, mặc định của nhánh này) rồi
+chạy lại `05_eval_metrics.py`.
 
 **Chưa chạy được trên máy hiện tại**: máy này không có `colmap`/`pycolmap`/`torch`
 cài sẵn, và GPU local (GTX 1650 4GB) không đủ để train 3DGS. Toàn bộ script dưới

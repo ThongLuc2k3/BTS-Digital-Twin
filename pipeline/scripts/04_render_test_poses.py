@@ -20,14 +20,23 @@ image_name gốc trong CSV có đuôi .JPG). Việc đặt tên file CUỐI CÙN
 zip nộp bài (giữ đuôi .JPG hay đổi .png) do 06_package_submission.py quyết định
 (xem KE_HOACH_VONG1.md mục 4, câu hỏi #3 — vẫn đang chờ xác nhận từ BTC).
 
-Hướng đi Mip-Splatting (Kết quả/Hướng đi.md mục 2, #2): script tự đọc file
-`cfg_args` mà train.py ghi lại trong model_dir để biết chính xác `antialiasing`/
-`sh_degree` đã dùng lúc train (xem read_cfg_args() bên dưới) — tránh trường hợp
+Hướng đi Mip-Splatting (Kết quả/Hướng đi.md mục 2, #2): script tự đọc
+`sh_degree` từ `cfg_args` mà train.py ghi lại trong model_dir, và tự đọc
+`antialiasing` từ `pipeline_train_flags.json` mà 03_train_3dgs.sh tự ghi thêm
+sau khi train xong — để biết chính xác cấu hình lúc train, tránh trường hợp
 train bật --antialiasing nhưng render quên bật lại (rasterizer sẽ chạy nhưng
-kết quả không nhất quán, không hề báo lỗi). Chỉ dùng --antialiasing on/off để ép
+kết quả không nhất quán, không hề báo lỗi). ĐÃ TỪNG XẢY RA ĐÚNG LỖI NÀY: cfg_args
+của repo gốc chỉ lưu ModelParams, KHÔNG lưu `antialiasing` (field của
+PipelineParams) — nên trước khi có pipeline_train_flags.json, script này luôn
+âm thầm render với antialiasing=False dù train đã bật, làm méo hoàn toàn
+PSNR/SSIM/LPIPS (xem read_cfg_args()/read_pipeline_train_flags() bên dưới).
+Model train bằng bản script cũ (thiếu pipeline_train_flags.json) sẽ được cảnh
+báo rõ thay vì âm thầm sai — cần re-render bằng --antialiasing on/off thủ công
+đúng với giá trị thật đã dùng lúc train. Chỉ dùng --antialiasing on/off để ép
 thủ công khi thật sự cần so sánh A/B.
 """
 import argparse
+import json
 import os
 import sys
 from argparse import Namespace
@@ -67,11 +76,15 @@ class _PipelineParamsStub:
 
 def read_cfg_args(model_dir: Path) -> dict:
     """Đọc file cfg_args mà train.py tự ghi (Namespace(...) dạng str, xem
-    train.py::prepare_output_and_logger) để tự phát hiện sh_degree/antialiasing
-    ĐÚNG như lúc train — tránh lỗi âm thầm khi train dùng --antialiasing nhưng
-    render quên bật lại (hoặc ngược lại), 2 lệnh sẽ ra kết quả không nhất quán
-    mà không hề báo lỗi gì. Cùng cách parse mà chính get_combined_args() của repo
-    Inria dùng (arguments/__init__.py)."""
+    train.py::prepare_output_and_logger) để tự phát hiện sh_degree ĐÚNG như lúc
+    train. LƯU Ý (đã đối chiếu trực tiếp source thật tại commit đã pin,
+    54c035f7834b564019656c3e3fcc3646292f727d): cfg_args CHỈ chứa ModelParams
+    (train.py gọi `prepare_output_and_logger(dataset)` với
+    `dataset = lp.extract(args)`), nên `sh_degree`/`train_test_exp`/`depths` có
+    trong file này, nhưng `antialiasing` (field của PipelineParams) THÌ KHÔNG
+    BAO GIỜ có mặt — dù lúc train có bật --antialiasing hay không, cfg.get(
+    'antialiasing') luôn ra None. Dùng read_pipeline_train_flags() bên dưới để
+    lấy đúng giá trị antialiasing thật đã dùng lúc train."""
     cfg_path = model_dir / "cfg_args"
     if not cfg_path.exists():
         return {}
@@ -80,6 +93,23 @@ def read_cfg_args(model_dir: Path) -> dict:
         return vars(ns)
     except Exception as e:
         print(f"[CẢNH BÁO] Không đọc/parse được {cfg_path}: {e} — dùng giá trị mặc định/CLI.")
+        return {}
+
+
+def read_pipeline_train_flags(model_dir: Path) -> dict:
+    """Đọc pipeline_train_flags.json do 03_train_3dgs.sh tự ghi sau khi train xong
+    (chứa antialiasing/depth_prior/exposure_comp/antenna_focus THẬT đã dùng) —
+    nguồn đáng tin cậy duy nhất cho `antialiasing`, vì cfg_args của repo gốc
+    không lưu field này (xem read_cfg_args()). Model train TRƯỚC khi
+    03_train_3dgs.sh được vá (chưa có file này) sẽ không có — main() sẽ cảnh
+    báo rõ thay vì âm thầm coi như antialiasing=False."""
+    p = model_dir / "pipeline_train_flags.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception as e:
+        print(f"[CẢNH BÁO] Không đọc/parse được {p}: {e} — bỏ qua.")
         return {}
 
 
@@ -130,15 +160,29 @@ def main():
     ply_path = model_dir / "point_cloud" / f"iteration_{iteration}" / "point_cloud.ply"
 
     cfg = read_cfg_args(model_dir)
+    train_flags = read_pipeline_train_flags(model_dir)
     if cfg:
-        print(f"  cfg_args đọc được: sh_degree={cfg.get('sh_degree')}, antialiasing={cfg.get('antialiasing')}")
+        print(f"  cfg_args đọc được: sh_degree={cfg.get('sh_degree')}")
     else:
         print("  [CẢNH BÁO] Không có cfg_args trong model_dir (checkpoint train trước khi pipeline hỗ trợ "
-              "tự phát hiện) — dùng mặc định sh_degree=3, antialiasing=off trừ khi chỉ định --sh_degree/--antialiasing.")
+              "tự phát hiện) — dùng mặc định sh_degree=3 trừ khi chỉ định --sh_degree.")
 
     sh_degree = args.sh_degree if args.sh_degree is not None else cfg.get("sh_degree", 3)
     if args.antialiasing == "auto":
-        antialiasing = bool(cfg.get("antialiasing", False))
+        if "antialiasing" in train_flags:
+            antialiasing = bool(train_flags["antialiasing"])
+            print(f"  antialiasing đọc từ pipeline_train_flags.json (giá trị THẬT lúc train): {antialiasing}")
+        else:
+            antialiasing = False
+            print(
+                "  [CẢNH BÁO NGHIÊM TRỌNG] Không có pipeline_train_flags.json trong model_dir — model này train "
+                "bằng bản 03_train_3dgs.sh CŨ (trước khi phát hiện cfg_args của repo gốc KHÔNG lưu field "
+                "antialiasing, xem docstring read_cfg_args()). KHÔNG THỂ tự biết chắc lúc train có bật "
+                "--antialiasing hay không -> đang mặc định antialiasing=False, CÓ THỂ SAI và làm méo hoàn toàn "
+                "PSNR/SSIM/LPIPS (train/render lệch antialiasing) mà không báo lỗi gì khác. Nếu bạn train scene "
+                "này với ANTIALIASING=1 (mặc định của pipeline), hãy chạy lại với --antialiasing on để ép đúng "
+                "giá trị, rồi chạy lại 05_eval_metrics.py."
+            )
     else:
         antialiasing = args.antialiasing == "on"
 

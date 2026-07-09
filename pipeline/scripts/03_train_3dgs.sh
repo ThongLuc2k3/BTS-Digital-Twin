@@ -245,6 +245,20 @@ for SCENE in "$@"; do
   fi
   echo "-> Xong $SCENE. Model: $MODEL_DIR/point_cloud/iteration_$ITERATIONS/point_cloud.ply"
 
+  # `antialiasing` là field của PipelineParams trong repo Inria gốc, còn cfg_args
+  # mà train.py tự ghi CHỈ chứa ModelParams (xem train.py::training(), dòng
+  # `tb_writer = prepare_output_and_logger(dataset)` với dataset=lp.extract(args))
+  # -> cfg_args KHÔNG BAO GIỜ có field antialiasing, dù có bật --antialiasing hay
+  # không (đã đối chiếu trực tiếp source tại commit đã pin). 04_render_test_poses.py
+  # từng tự tin "auto-detect" antialiasing từ cfg_args để khớp train/render, nhưng
+  # vì field đó luôn vắng mặt nên nó luôn ngầm định antialiasing=False bất kể lúc
+  # train đã bật hay chưa — gây lệch train/render (Gaussian train ra opacity đã bù
+  # EWA nhưng render lại không bù) mà KHÔNG hề báo lỗi, chỉ âm thầm ra ảnh kém hơn.
+  # Ghi lại đúng giá trị thật đã dùng lúc train ra 1 file riêng để render đọc lại.
+  cat > "$MODEL_DIR/pipeline_train_flags.json" <<EOF
+{"antialiasing": $( [[ "$ANTIALIASING" == "1" ]] && echo true || echo false ), "depth_prior": $( [[ "$DEPTH_PRIOR" == "1" ]] && echo true || echo false ), "exposure_comp": $( [[ "$EXPOSURE_COMP" == "1" ]] && echo true || echo false ), "antenna_focus": $( [[ "$ANTENNA_FOCUS" == "1" ]] && echo true || echo false )}
+EOF
+
   if [[ "$CLEANUP_DENSE_IMAGES" == "1" && -d "$SOURCE_DIR/images" ]]; then
     FREED_KB=$(du -sk "$SOURCE_DIR/images" 2>/dev/null | awk '{print $1}')
     rm -rf "$SOURCE_DIR/images"

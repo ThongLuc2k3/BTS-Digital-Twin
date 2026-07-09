@@ -9,7 +9,7 @@ Splatting (dựng scene 3D, train riêng từng scene) → render đúng pose y�
 | File/thư mục | Nội dung |
 |---|---|
 | [`Đề bài.md`](./Đề%20bài.md) | Đề bài gốc + tóm tắt quy định vòng 1 từ BTC |
-| [`KE_HOACH_VONG1.md`](./KE_HOACH_VONG1.md) | Kế hoạch triển khai chi tiết: baseline, rủi ro kỹ thuật, mốc thời gian, checklist nộp bài |
+| [`Hướng đi.md`](./Hướng%20đi.md) | Kế hoạch triển khai + phân tích điểm chấm thật + thứ tự ưu tiên hướng cải tiến (baseline, checklist nộp bài, Mip-Splatting, depth prior, antenna-focus...) |
 | [`Dataset/README.md`](./Dataset/README.md) | Phân tích cấu trúc dataset thật (public_set/private_set1, format `test_poses.csv`, các bất thường phát hiện được) — **dataset thật (`Dataset/VAI_NVS_DATA/`) không nằm trong repo** (quá nặng, ~1GB), tải riêng qua Google Drive |
 | [`pipeline/`](./pipeline) | Toàn bộ code: COLMAP, train/render 3D Gaussian Splatting, tính PSNR/SSIM/LPIPS, đóng gói submission |
 | [`pipeline/README.md`](./pipeline/README.md) | Hướng dẫn cài đặt + thứ tự chạy từng script |
@@ -21,9 +21,8 @@ Cách dễ nhất: mở `pipeline/kaggle_pipeline.ipynb` trên Kaggle (bật GPU
 điền `REPO_URL` (link repo này) và `GDRIVE_URL` (link dataset), chạy tuần tự từng
 cell theo hướng dẫn trong chính notebook. Chi tiết đầy đủ ở `pipeline/README.md`.
 
-**Bắt buộc chạy Phase 0 (`02_validate_frame.py`) trước tiên** — kiểm định xem hệ
-toạ độ COLMAP tự chạy có khớp với hệ toạ độ trong `test_poses.csv` hay không, xem
-lý do ở `KE_HOACH_VONG1.md` mục 2 và 4.
+**Sanity-check hệ toạ độ (`02_validate_frame.py`)** không còn bắt buộc — đã xác nhận
+sparse COLMAP của BTC khớp `test_poses.csv` (xem `Hướng đi.md` mục 1).
 
 ## Trạng thái
 

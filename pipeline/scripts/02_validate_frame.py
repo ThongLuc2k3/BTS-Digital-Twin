@@ -112,7 +112,7 @@ def main():
         print("\n=> KẾT LUẬN: 2 hệ toạ độ khác gauge (RAW residual lớn) nhưng nội tại nhất quán "
               "(ALIGNED residual nhỏ). RỦI RO CAO cho 7 scene private còn lại KHÔNG có sparse gốc "
               "để đối chiếu — không có cách suy ra đúng Sim3 cho chúng. BÁO BTC NGAY và tham khảo "
-              "mục 4 trong KE_HOACH_VONG1.md.")
+              "mục 1 trong Hướng đi.md.")
     else:
         print("\n=> KẾT LUẬN: Cả 2 residual đều lớn — có vấn đề khác (COLMAP thất bại một phần, "
               "ảnh không đủ liên kết, sai camera model...). Kiểm tra lại log mapping phía trên, "

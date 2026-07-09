@@ -20,14 +20,20 @@ chính thức của BTC (Đề bài.md mục 8.4):
     PSNR_norm = clamp(PSNR / PSNR_max, 0, 1)
 
 QUAN TRỌNG: đề bài KHÔNG công bố giá trị PSNR_max cụ thể (chỉ ghi "ngưỡng được
-lựa chọn trước") — --psnr_max ở đây chỉ là GIẢ ĐỊNH để bạn tự ước lượng thứ hạng
-tương đối giữa các lần thử nghiệm, KHÔNG phải số chính thức của BTC. Mặc định
-30.0 vì đó là mức PSNR "rất tốt" cho cảnh ngoài trời phức tạp theo benchmark
-3DGS công khai (Mip-NeRF360 outdoor ~24-27dB, Tanks&Temples ~23dB) — đủ cao để
-không bị đạt trần dễ dàng, đủ thấp để không "chôn" kết quả tốt về gần 0. Script
-tự in thêm bảng Score ở vài giá trị PSNR_max khác để thấy độ nhạy — nếu có dịp
-hỏi BTC được, nên xác nhận lại số thật (xem KE_HOACH_VONG1.md mục "Những điều
-cần tự xác nhận thêm").
+lựa chọn trước"). Mặc định ở đây là 50.0 — KHÔNG còn là phỏng đoán suông nữa, mà
+GIẢI NGƯỢC từ điểm chấm thật của BTC (private_set1, 8/8 scene khớp: Score
+58.67320, PSNR 19.47, SSIM 0.5637, LPIPS 0.2480) — thay psnr_max=50 vào đúng
+công thức mục 8.4 khớp lại 58.67320 với sai số <0.001% (xem `Hướng đi.md` mục 1).
+--psnr_max vẫn cho tự đổi nếu muốn thử giá trị khác. Script tự in thêm bảng Score
+ở vài giá trị PSNR_max khác để thấy độ nhạy.
+
+CÁCH GỘP ĐIỂM NHIỀU SCENE — đúng nguyên văn Đề bài.md mục 8.4: "Điểm trên bảng
+xếp hạng là điểm trung bình của toàn bộ các scene" — tức TRUNG BÌNH CỘNG của
+Score từng scene (mỗi scene 1 Score, rồi lấy trung bình N scene đó), KHÔNG PHẢI
+gộp hết ảnh của mọi scene lại tính chung 1 lần. 2 cách này cho kết quả KHÁC NHAU
+nếu số ảnh test giữa các scene không bằng nhau (scene ít ảnh sẽ bị lép vế nếu gộp
+ảnh thay vì gộp theo scene). Script tính đúng: Score từng scene trước, rồi trung
+bình cộng các Score đó ở cuối.
 """
 import argparse
 import csv
@@ -108,7 +114,10 @@ def write_csv(csv_path: Path, rows: list[tuple], psnr_max: float) -> None:
             writer.writerow([stem, psnr_v, ssim_v, lpips_v, score])
 
 
-def print_stats(name: str, rows: list[tuple], psnr_max: float):
+def print_stats(name: str, rows: list[tuple], psnr_max: float) -> float:
+    """Trả về Score của riêng `name` (1 scene) — dùng để main() tự trung bình cộng
+    theo scene ở cuối, đúng "điểm trung bình của toàn bộ các scene" (Đề bài.md mục 8.4),
+    KHÔNG gộp ảnh của nhiều scene lại tính chung."""
     arr = np.array([[r[1], r[2], r[3]] for r in rows])
     print(f"\n=== {name}: {len(rows)} ảnh ===")
     print(f"  PSNR  mean={arr[:, 0].mean():.3f}  min={arr[:, 0].min():.3f}")
@@ -117,14 +126,17 @@ def print_stats(name: str, rows: list[tuple], psnr_max: float):
         print(f"  LPIPS mean={arr[:, 2].mean():.4f}  max={arr[:, 2].max():.4f}")
 
     scores = [compute_score(r[1], r[2], r[3], psnr_max) for r in rows]
-    print(f"  Score mean={np.mean(scores):.4f}  min={np.min(scores):.4f}  "
-          f"(công thức BTC mục 8.4, PSNR_max={psnr_max} — GIẢ ĐỊNH, xem cảnh báo đầu file)")
+    scene_score = float(np.mean(scores))
+    print(f"  Score mean={scene_score:.4f}  min={np.min(scores):.4f}  "
+          f"(công thức BTC mục 8.4, PSNR_max={psnr_max} — ước lượng, xem docstring đầu file)")
 
     print("  Độ nhạy Score theo PSNR_max khác (để tham khảo, không phải điểm chính thức):")
     for candidate in (20.0, 25.0, 30.0, 35.0, 40.0, 50.0):
         alt_scores = [compute_score(r[1], r[2], r[3], candidate) for r in rows]
         marker = " <- đang dùng" if candidate == psnr_max else ""
         print(f"    PSNR_max={candidate:5.1f} -> Score mean={np.mean(alt_scores):.4f}{marker}")
+
+    return scene_score
 
 
 def main():
@@ -134,9 +146,9 @@ def main():
     g.add_argument("--all_public", action="store_true")
     ap.add_argument("--renders_root", default=None, help="Mặc định pipeline/work")
     ap.add_argument("--no_lpips", action="store_true", help="Bỏ qua LPIPS (nếu chưa cài package lpips)")
-    ap.add_argument("--psnr_max", type=float, default=30.0,
-                     help="Ngưỡng chuẩn hoá PSNR cho công thức Score (mặc định 30.0 — "
-                          "GIẢ ĐỊNH, BTC không công bố số thật, xem docstring đầu file)")
+    ap.add_argument("--psnr_max", type=float, default=50.0,
+                     help="Ngưỡng chuẩn hoá PSNR cho công thức Score (mặc định 50.0 — "
+                          "giải ngược từ điểm chấm thật BTC, sai số <0.001%%, xem docstring đầu file)")
     args = ap.parse_args()
 
     scenes = [get_scene(args.scene)] if args.scene else all_scenes("public")
@@ -152,7 +164,7 @@ def main():
             if torch.cuda.is_available():
                 lpips_fn = lpips_fn.cuda()
 
-    all_rows = []
+    scene_scores = []
     for scene in scenes:
         if scene.split != "public":
             print(f"[BỎ QUA] {scene.name}: không phải public_set, không có ảnh GT.")
@@ -163,12 +175,20 @@ def main():
             continue
         rows = eval_scene(scene, renders_dir, lpips_fn)
         if rows:
-            print_stats(scene.name, rows, args.psnr_max)
+            scene_score = print_stats(scene.name, rows, args.psnr_max)
             write_csv(renders_root / scene.name / "eval_metrics.csv", rows, args.psnr_max)
-            all_rows.extend(rows)
+            scene_scores.append((scene.name, scene_score))
 
-    if all_rows:
-        print_stats("TRUNG BÌNH TOÀN BỘ", all_rows, args.psnr_max)
+    if scene_scores:
+        leaderboard_est = float(np.mean([s for _, s in scene_scores]))
+        print(f"\n=== ƯỚC LƯỢNG ĐIỂM BẢNG XẾP HẠNG ({len(scene_scores)} scene) ===")
+        print("  Đúng cách BTC gộp điểm (Đề bài.md mục 8.4: \"điểm trung bình của toàn bộ "
+              "các scene\") — trung bình cộng Score TỪNG SCENE, không gộp ảnh của các scene "
+              "lại tính chung.")
+        for name, s in scene_scores:
+            print(f"    {name}: {s:.4f}")
+        print(f"  Score ước lượng (x100 cho dễ so leaderboard) = {leaderboard_est * 100:.4f}  "
+              f"(PSNR_max={args.psnr_max} — ước lượng, KHÔNG phải điểm BTC chấm thật)")
 
 
 if __name__ == "__main__":

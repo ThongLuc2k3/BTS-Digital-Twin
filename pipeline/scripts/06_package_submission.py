@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Đóng gói submission_round1.zip từ pipeline/work/<scene>/renders/ cho 8 scene
 private_set1, kèm kiểm tra tự động TRƯỚC khi nén (đủ scene/ảnh/đúng kích thước) —
-đúng checklist ở KE_HOACH_VONG1.md mục 7.
+đúng checklist ở Hướng đi.md mục 6.
 
 Cách dùng:
     python 06_package_submission.py --out submission_round1.zip

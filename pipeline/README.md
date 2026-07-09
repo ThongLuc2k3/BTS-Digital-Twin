@@ -1,6 +1,6 @@
 # Pipeline — BTS Digital Twin (NVS) Vòng 1
 
-Code thực thi cho kế hoạch ở `../KE_HOACH_VONG1.md`. Toàn bộ script đã được viết
+Code thực thi cho kế hoạch ở `../Hướng đi.md`. Toàn bộ script đã được viết
 dựa trên việc đối chiếu trực tiếp source thật của COLMAP (`colmap/colmap`, nhánh
 `main`, thư mục `src/pycolmap/`) và của `graphdeco-inria/gaussian-splatting`
 (fetch trực tiếp từ GitHub, không đoán từ trí nhớ) — xem chú thích đầu mỗi file.
@@ -25,7 +25,7 @@ cd ..
 export GS_REPO=$(pwd)/gaussian-splatting   # cần export lại mỗi lần mở terminal mới
 ```
 
-## 1. Thứ tự chạy (đúng theo `KE_HOACH_VONG1.md`)
+## 1. Thứ tự chạy (đúng theo `Hướng đi.md`)
 
 Sparse `sparse/0/` hợp lệ ở cả 13/13 scene — `01_run_colmap.py` mặc định **dùng
 thẳng sparse có sẵn** (chỉ undistort, rất nhanh), không tự chạy lại COLMAP.
@@ -39,7 +39,7 @@ python 02_validate_frame.py
 
 So sánh COLMAP tự chạy vs sparse có sẵn của `HCM0249` — chỉ cần chạy nếu muốn
 đối chiếu thêm; không còn là điều kiện bắt buộc trước khi làm tiếp (xem
-`KE_HOACH_VONG1.md` mục 2, điểm 5).
+`Hướng đi.md` mục 1).
 
 ### Bước 1 — Chuẩn bị dữ liệu COLMAP cho từng scene (dùng sparse có sẵn)
 
@@ -122,4 +122,4 @@ console để không phải mò file khi có sự cố.
 - `scripts/04_render_test_poses.py`: PNG lưu theo `<stem>.png` trong thư mục làm
   việc nội bộ; tên file CUỐI CÙNG trong zip nộp bài do `06_package_submission.py
   --filename_mode` quyết định (mặc định giữ nguyên `image_name`, kể cả đuôi
-  `.JPG` gốc — xem `KE_HOACH_VONG1.md` mục 4 câu hỏi #2, chưa có xác nhận BTC).
+  `.JPG` gốc — xem `Hướng đi.md` mục 1, chưa có xác nhận BTC).

@@ -18,7 +18,7 @@ Yêu cầu trước khi chạy:
 Output: pipeline/work/<scene>/renders/<stem>.png (LUÔN là PNG thật, kể cả nếu
 image_name gốc trong CSV có đuôi .JPG). Việc đặt tên file CUỐI CÙNG khi đóng gói
 zip nộp bài (giữ đuôi .JPG hay đổi .png) do 06_package_submission.py quyết định
-(xem KE_HOACH_VONG1.md mục 4, câu hỏi #3 — vẫn đang chờ xác nhận từ BTC).
+(xem Hướng đi.md mục 1 — vẫn đang chờ xác nhận từ BTC).
 """
 import argparse
 import os

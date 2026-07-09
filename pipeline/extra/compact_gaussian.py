@@ -208,7 +208,19 @@ class CompactGaussianModel(GaussianModel):
             prune_mask = prune_mask & (~protected)
         n_pruned = int(prune_mask.sum().item())
         if n_pruned > 0:
+            # self.tmp_radii trong bản gốc CHỈ tồn tại tạm thời bên trong
+            # densify_and_prune() (được set = None ngay sau khi hàm đó chạy
+            # xong) — nhưng prune_points() gốc lại luôn cắt tensor này theo
+            # valid_points_mask bất kể đang gọi từ đâu. Vì apply_mask_pruning
+            # chạy ĐỘC LẬP với densify_and_prune (không đi kèm nhau), tmp_radii
+            # đang là None -> cấp tạm 1 tensor rồi trả lại None như cũ để không
+            # phá vỡ giả định của phần densify gốc.
+            restore_none = self.tmp_radii is None
+            if restore_none:
+                self.tmp_radii = torch.zeros(self.get_xyz.shape[0], device="cuda")
             self.prune_points(prune_mask)
+            if restore_none:
+                self.tmp_radii = None
         return n_pruned
 
     # ---- các hàm densify/prune gốc: chỉ cần thêm việc cắt/nối thêm _mask

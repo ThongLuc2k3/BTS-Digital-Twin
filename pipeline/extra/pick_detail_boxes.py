@@ -33,15 +33,15 @@ def load_points3D(sparse_dir: str):
     bin_path = os.path.join(sparse_dir, "points3D.bin")
     txt_path = os.path.join(sparse_dir, "points3D.txt")
     from scene.colmap_loader import read_points3D_binary, read_points3D_text
+    # Lưu ý: trong repo graphdeco-inria/gaussian-splatting, 2 hàm này trả thẳng
+    # về tuple (xyz, rgb, errors) dạng numpy array — KHÔNG phải dict Point3D.
     if os.path.exists(bin_path):
-        points3D = read_points3D_binary(bin_path)
+        xyz, rgb, _errors = read_points3D_binary(bin_path)
     elif os.path.exists(txt_path):
-        points3D = read_points3D_text(txt_path)
+        xyz, rgb, _errors = read_points3D_text(txt_path)
     else:
         raise FileNotFoundError(f"Không tìm thấy points3D.bin/.txt trong {sparse_dir}")
 
-    xyz = np.stack([p.xyz for p in points3D.values()], axis=0)
-    rgb = np.stack([p.rgb for p in points3D.values()], axis=0)
     return xyz, rgb
 
 

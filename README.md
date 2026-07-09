@@ -4,11 +4,11 @@ Sinh ảnh RGB tại các pose (góc nhìn) mục tiêu cho 8 scene trạm BTS, 
 train của mỗi scene — pipeline: COLMAP (ước lượng pose camera) → 3D Gaussian
 Splatting (dựng scene 3D, train riêng từng scene) → render đúng pose yêu cầu.
 
-**Nhánh này (`feature/mip-splatting`)**: hướng cải tiến sau khi có điểm chấm thật
-(baseline vanilla 3DGS đạt 58.67/100, xem `Kết quả/Hướng đi.md`) — bật
-`--antialiasing` (EWA Filter của Mip-Splatting, đã tích hợp sẵn trong repo Inria
-từ 10/2024) + depth regularization (Depth Anything V2) + exposure compensation,
-không cần đổi codebase 3DGS. Chi tiết: `Kết quả/Hướng đi.md`, `pipeline/README.md`.
+**Nhánh này (`feature/depth-anything-v2`)**: nhánh từ `feature/mip-splatting`, tập
+trung chạy thật hướng ưu tiên #3 (`Kết quả/Hướng đi.md` mục 2) — depth regularization
+bằng Depth Anything V2 (`--depths`), mặc định **BẬT** (`USE_DEPTH_PRIOR = True`) trong
+3 notebook train, chạy trên nền Mip-Splatting antialiasing (đã tích hợp sẵn trong repo
+Inria từ 10/2024, cũng mặc định bật) — không cần đổi codebase 3DGS. Chi tiết: `Kết quả/Hướng đi.md`, `pipeline/README.md`.
 
 ## Cấu trúc repo
 
@@ -28,7 +28,7 @@ không cần đổi codebase 3DGS. Chi tiết: `Kết quả/Hướng đi.md`, `p
 
 Cách dễ nhất: mở `pipeline/kaggle_public.ipynb` (hoặc bản đồng bộ ở root
 `bts-digital-twin-public.ipynb`) trên Kaggle (bật GPU + Internet), điền `REPO_URL`
-(link repo này, nhớ `REPO_BRANCH = "feature/mip-splatting"`) và `GDRIVE_URL` (link
+(link repo này, nhớ `REPO_BRANCH = "feature/depth-anything-v2"`) và `GDRIVE_URL` (link
 dataset), chạy tuần tự từng cell theo hướng dẫn trong chính notebook. Chi tiết đầy
 đủ ở `pipeline/README.md`. Vòng 1 dùng 3 notebook riêng (`kaggle_public` /
 `kaggle_private` / `kaggle_submission`) vì tổng thời gian train 13 scene không vừa
@@ -41,4 +41,5 @@ nhận sparse COLMAP của BTC khớp `test_poses.csv` (xem `KE_HOACH_VONG1.md` 
 
 Đang ở giai đoạn Vòng 1 (Sơ loại) — deadline nộp `submission_round1.zip`: 30/07/2026.
 Đã nộp baseline vanilla 3DGS (Score 58.67320/100, xem `Kết quả/Kết quả chấm.png`) —
-đang triển khai cải tiến trên nhánh `feature/mip-splatting`, chưa chạy GPU thật.
+đang triển khai cải tiến trên nhánh `feature/depth-anything-v2` (depth prior trên nền
+Mip-Splatting), chưa chạy GPU thật.

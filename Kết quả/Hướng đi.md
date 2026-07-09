@@ -145,6 +145,8 @@ yêu cầu (mục 10.3 đề bài).
       `ANTENNA_FOCUS=1` cùng lúc với Mip-Splatting.
 - [ ] Nếu tốt hơn baseline → áp dụng cho private set → nộp đè bản mới (đừng để 58.67 là bản
       cuối cùng).
-- [ ] Pin thêm commit cho Depth-Anything-V2 nếu muốn an toàn tuyệt đối cho khả năng tái lập.
+- [x] Pin commit cho Depth-Anything-V2 (`a561b849ebae10a6f5ef49e26c83cbbcd36c71bf`) — đã
+      thêm `git checkout` sau clone ở `08_generate_depth_priors.py` + 3 notebook train,
+      trên nhánh `feature/depth-anything-v2`.
 - [ ] Mọi kỹ thuật mới đều test trên `public_set` trước, chỉ roll-out private set khi đã thấy
       cải thiện rõ ràng.

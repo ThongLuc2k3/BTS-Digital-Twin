@@ -26,6 +26,7 @@ dưới):
 Cài đặt Depth-Anything-V2 (1 lần, máy có GPU CUDA):
     git clone https://github.com/DepthAnything/Depth-Anything-V2.git
     cd Depth-Anything-V2
+    git checkout a561b849ebae10a6f5ef49e26c83cbbcd36c71bf   # pin để tái lập (đề bài mục 10.3)
     pip install -r requirements.txt
     mkdir checkpoints && cd checkpoints
     # tải depth_anything_v2_vitl.pth từ

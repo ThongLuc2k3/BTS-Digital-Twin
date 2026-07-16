@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Đóng gói submission_round1.zip từ pipeline/work/<scene>/renders/ cho 8 scene
-private_set1, kèm kiểm tra tự động TRƯỚC khi nén (đủ scene/ảnh/đúng kích thước) —
-đúng checklist ở Hướng đi.md mục 6.
+"""Đóng gói submission.zip từ pipeline/work/<scene>/renders/ cho toàn bộ 7 scene
+round 2 (5 scene BTS + bonsai + chair — xem pipeline/common/scenes.py), kèm kiểm
+tra tự động TRƯỚC khi nén (đủ scene/ảnh/đúng kích thước) — đúng checklist ở
+plan.md mục 8.
 
 Cách dùng:
-    python 06_package_submission.py --out submission_round1.zip
-    python 06_package_submission.py --check_only submission_round1.zip   # chỉ kiểm tra zip có sẵn
+    python 06_package_submission.py --out submission.zip
+    python 06_package_submission.py --check_only submission.zip   # chỉ kiểm tra zip có sẵn
 
 Về tên file trong zip — BTC (admin AI RACE) đã xác nhận: PHẢI giữ đúng tên/đuôi
 trong cột image_name (vd .JPG), KHÔNG được đổi sang .png, nếu không bài nộp không
@@ -151,12 +152,12 @@ def verify_zip(zip_path: Path, scenes: list[Scene]):
             print(f"  ... và {len(errors) - 50} lỗi khác")
         raise SystemExit(1)
     print(f"{zip_path} ({size_mb:.1f} MB): OK — đủ toàn bộ {n_total} ảnh cho {len(scenes)} scene "
-          f"private_set1, đúng định dạng + kích thước.")
+          f"round 2, đúng định dạng + kích thước.")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="submission_round1.zip")
+    ap.add_argument("--out", default="submission.zip")
     ap.add_argument("--renders_root", default=None, help="Mặc định pipeline/work")
     ap.add_argument("--filename_mode", choices=["literal", "png_ext"], default="literal")
     ap.add_argument("--jpeg_quality", type=int, default=95,
@@ -164,7 +165,7 @@ def main():
     ap.add_argument("--check_only", default=None, help="Đường dẫn 1 zip có sẵn, chỉ kiểm tra không đóng gói lại")
     args = ap.parse_args()
 
-    scenes = all_scenes("private")  # submission_round1 chỉ nộp cho 8 scene private_set1
+    scenes = all_scenes()  # round 2: nộp toàn bộ 7 scene (5 BTS + bonsai + chair), không còn split public/private
 
     if args.check_only:
         verify_zip(Path(args.check_only), scenes)

@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 """Sanity-check hệ toạ độ (TUỲ CHỌN — không bắt buộc).
 
-Dataset có sparse hợp lệ ở cả 13/13 scene, nên pipeline mặc định dùng THẲNG
-sparse có sẵn (xem `01_run_colmap.py` và
-`common/colmap_runner.py::use_provided_sparse`), không cần tự dựng lại COLMAP.
-Script này vẫn giữ lại, hữu ích khi:
+Round 2: cả 7/7 scene đều có sparse hợp lệ do BTC cấp sẵn (đã xác nhận bằng test
+thật — xem WORKLOG.md, task colmap_runner + audit), nên pipeline mặc định dùng
+THẲNG sparse có sẵn (xem `01_run_colmap.py` và
+`common/colmap_runner.py::use_provided_sparse`), không cần tự dựng lại COLMAP cho
+bất kỳ scene nào. Vì vậy rủi ro mà script này ban đầu nhắm tới ở round 1 (scene
+không có sparse gốc, phải tin tưởng mù COLMAP tự chạy) KHÔNG còn áp dụng ở round 2
+— `--force_own_colmap` giờ chỉ còn là phương án thử nghiệm/đối chiếu, không phải
+đường bắt buộc cho scene nào. Script này vẫn giữ lại, hữu ích khi:
 - Muốn đối chiếu/kiểm tra thêm cho chắc trước khi tin tưởng hoàn toàn.
 - Nghi ngờ chất lượng sparse của 1 scene cụ thể nào đó.
 
-Script này: tự chạy COLMAP trên train/images/ của HCM0249, rồi so sánh camera
-centers (projection_center) của các ảnh train với camera centers có sẵn trong
-sparse gốc BTC cung cấp — CÙNG một tập ảnh, nên đây là phép so sánh trực tiếp,
-không suy đoán.
+Script này: tự chạy COLMAP trên train/images/ của HCM0421 (scene BTS đã test kỹ ở
+Phase 0 — xem WORKLOG.md), rồi so sánh camera centers (projection_center) của các
+ảnh train với camera centers có sẵn trong sparse gốc BTC cung cấp — CÙNG một tập
+ảnh, nên đây là phép so sánh trực tiếp, không suy đoán. Đổi SCENE_NAME bên dưới
+nếu muốn kiểm định scene khác.
 
 Đọc kết quả:
 - "RAW residual" nhỏ (~0, tính theo % đường kính cảnh)  => 2 hệ trùng khớp tự nhiên.
@@ -31,7 +36,7 @@ from common.colmap_runner import run_colmap_scene
 from common.alignment import umeyama_alignment, raw_residuals
 from common.poses import representative_intrinsics
 
-SCENE_NAME = "HCM0249"  # scene DUY NHẤT có sparse gốc hợp lệ, xem Dataset/README.md
+SCENE_NAME = "HCM0421"  # round 2: mọi scene đều có sparse hợp lệ, chọn 1 scene BTS đại diện đã test kỹ ở Phase 0
 
 
 def load_camera_centers(rec: pycolmap.Reconstruction) -> dict:

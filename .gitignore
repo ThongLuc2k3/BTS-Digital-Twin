@@ -33,3 +33,4 @@ Thumbs.db
 # Phòng khi lỡ tạo file chứa secret cục bộ
 .env
 *.token
+VAI_NVS_DATA_ROUND2/

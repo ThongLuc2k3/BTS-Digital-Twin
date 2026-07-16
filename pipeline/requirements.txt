@@ -1,5 +1,5 @@
 # Cài trên máy CÓ GPU CUDA (máy local GTX 1650 4GB hiện tại KHÔNG đủ để train
-# 3DGS chất lượng tốt cho 13 scene — xem KE_HOACH_VONG1.md mục 2, điểm 6).
+# 3DGS chất lượng tốt cho 7 scene round 2 — xem plan.md).
 #
 # 1) PyTorch: cài theo đúng hướng dẫn https://pytorch.org/get-started/locally/
 #    khớp phiên bản CUDA của máy thuê (không ghi cứng ở đây vì phụ thuộc máy).
@@ -10,9 +10,16 @@ pycolmap>=3.10
 
 # 3) Repo train/render 3D Gaussian Splatting: KHÔNG cài qua pip, clone riêng:
 #      git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting.git
+#      cd gaussian-splatting && git checkout 54c035f7834b564019656c3e3fcc3646292f727d  # PIN — xem 03_train_3dgs.sh
 #      export GS_REPO=/path/to/gaussian-splatting
 #    rồi làm theo README của repo đó để cài diff_gaussian_rasterization + simple-knn
 #    (2 CUDA extension bắt buộc, cần build bằng nvcc khớp bản CUDA của máy).
+
+# 3b) (Tuỳ chọn, cho depth prior — 08_generate_depth_priors.py):
+#      git clone https://github.com/DepthAnything/Depth-Anything-V2.git
+#      pip install -r Depth-Anything-V2/requirements.txt
+#      export DA_REPO=/path/to/Depth-Anything-V2
+#    (đã tải checkpoint vitl vào $DA_REPO/checkpoints/, xem docstring 08_generate_depth_priors.py)
 
 # 4) Đánh giá & tiện ích
 numpy
@@ -21,3 +28,4 @@ scikit-image>=0.19   # cần >=0.19 để dùng tham số channel_axis trong 05_
 lpips
 plyfile
 tqdm
+opencv-python   # đọc/ghi depth map 16-bit trong 08_generate_depth_priors.py

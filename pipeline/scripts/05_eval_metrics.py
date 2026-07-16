@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Tự chấm PSNR/SSIM/LPIPS trên public_set (nơi DUY NHẤT có ảnh GT thật để so sánh).
-
-Không dùng được cho private_set1 (không có ảnh GT) — mục đích của script này là
-đánh giá pipeline TRƯỚC khi áp dụng cho private set, đúng lưu ý của BTC ở mục 4.7
-đề bài ("kiểm tra kỹ pipeline trên public set trước khi chạy chính thức").
+"""Tự chấm PSNR/SSIM/LPIPS trên holdout tự tạo (round 2: KHÔNG scene nào có ảnh GT
+test thật — xem plan.md mục 4 "Phương pháp đánh giá bắt buộc"). Đây là cách DUY
+NHẤT hợp lệ để tự chấm trước khi nộp: giữ lại ~10-15% ảnh train làm holdout (xem
+00_make_holdout_split.py), so ảnh render tại pose holdout với ảnh train thật đó.
 
 Cách dùng:
-    python 05_eval_metrics.py --scene HCM0181
-    python 05_eval_metrics.py --all_public
-    python 05_eval_metrics.py --all_public --psnr_max 25   # tự chọn PSNR_max khác
+    python 00_make_holdout_split.py --scene HCM0421          # 1 lần, tạo holdout
+    python 04_render_test_poses.py --scene HCM0421 \\
+        --poses_csv pipeline/work/HCM0421/holdout/holdout_poses.csv \\
+        --out_dir pipeline/work/HCM0421/holdout_renders
+    python 05_eval_metrics.py --scene HCM0421
+    python 05_eval_metrics.py --all
+    python 05_eval_metrics.py --all --psnr_max 25   # tự chọn PSNR_max khác
 
-Yêu cầu đã chạy 04_render_test_poses.py cho scene đó trước (renders nằm ở
-pipeline/work/<scene>/renders/<stem>.png).
+Yêu cầu đã chạy 00_make_holdout_split.py + 04_render_test_poses.py (--poses_csv trỏ
+sang holdout_poses.csv) cho scene đó trước — renders nằm ở
+pipeline/work/<scene>/holdout_renders/<stem>.png (mặc định), GT nằm ở
+pipeline/work/<scene>/holdout/holdout_gt/ (do 00_make_holdout_split.py tạo).
 
 Ngoài PSNR/SSIM/LPIPS riêng lẻ, còn tính điểm tổng hợp Score theo ĐÚNG công thức
 chính thức của BTC (Đề bài.md mục 8.4):
@@ -59,8 +64,7 @@ def load_img01(path: Path) -> np.ndarray:
     return np.asarray(Image.open(path).convert("RGB")).astype(np.float32) / 255.0
 
 
-def eval_scene(scene: Scene, renders_dir: Path, lpips_fn) -> list[tuple]:
-    gt_dir = scene.gt_test_images_dir
+def eval_scene(scene: Scene, renders_dir: Path, gt_dir: Path, lpips_fn) -> list[tuple]:
     rows = []
     gt_paths = sorted(gt_dir.glob("*"))
     for gt_path in gt_paths:
@@ -142,16 +146,20 @@ def print_stats(name: str, rows: list[tuple], psnr_max: float) -> float:
 def main():
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
-    g.add_argument("--scene", help="1 scene public cụ thể, vd HCM0181")
-    g.add_argument("--all_public", action="store_true")
+    g.add_argument("--scene", help="1 scene cụ thể, vd chair")
+    g.add_argument("--all", action="store_true", help="Toàn bộ 7 scene round 2")
     ap.add_argument("--renders_root", default=None, help="Mặc định pipeline/work")
+    ap.add_argument("--renders_subdir", default="holdout_renders",
+                     help="Thư mục con trong work/<scene>/ chứa ảnh render holdout "
+                          "(mặc định 'holdout_renders' — khớp --out_dir gợi ý ở "
+                          "04_render_test_poses.py)")
     ap.add_argument("--no_lpips", action="store_true", help="Bỏ qua LPIPS (nếu chưa cài package lpips)")
     ap.add_argument("--psnr_max", type=float, default=50.0,
                      help="Ngưỡng chuẩn hoá PSNR cho công thức Score (mặc định 50.0 — "
                           "giải ngược từ điểm chấm thật BTC, sai số <0.001%%, xem docstring đầu file)")
     args = ap.parse_args()
 
-    scenes = [get_scene(args.scene)] if args.scene else all_scenes("public")
+    scenes = [get_scene(args.scene)] if args.scene else all_scenes()
     pipeline_root = Path(__file__).resolve().parents[1]
     renders_root = Path(args.renders_root) if args.renders_root else pipeline_root / "work"
 
@@ -166,14 +174,18 @@ def main():
 
     scene_scores = []
     for scene in scenes:
-        if scene.split != "public":
-            print(f"[BỎ QUA] {scene.name}: không phải public_set, không có ảnh GT.")
+        gt_dir = renders_root / scene.name / "holdout" / "holdout_gt"
+        if not gt_dir.exists():
+            print(f"[BỎ QUA] {scene.name}: chưa có holdout (thiếu {gt_dir}) — chạy "
+                  f"00_make_holdout_split.py --scene {scene.name} trước.")
             continue
-        renders_dir = renders_root / scene.name / "renders"
+        renders_dir = renders_root / scene.name / args.renders_subdir
         if not renders_dir.exists():
-            print(f"[BỎ QUA] {scene.name}: chưa render (thiếu {renders_dir}) — chạy 04_render_test_poses.py trước.")
+            print(f"[BỎ QUA] {scene.name}: chưa render holdout (thiếu {renders_dir}) — chạy "
+                  f"04_render_test_poses.py --scene {scene.name} --poses_csv "
+                  f".../holdout/holdout_poses.csv --out_dir {renders_dir} trước.")
             continue
-        rows = eval_scene(scene, renders_dir, lpips_fn)
+        rows = eval_scene(scene, renders_dir, gt_dir, lpips_fn)
         if rows:
             scene_score = print_stats(scene.name, rows, args.psnr_max)
             write_csv(renders_root / scene.name / "eval_metrics.csv", rows, args.psnr_max)

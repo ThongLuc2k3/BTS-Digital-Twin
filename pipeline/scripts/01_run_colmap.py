@@ -8,9 +8,9 @@ có sẵn (chỉ undistort, rất nhanh), KHÔNG tự chạy lại COLMAP. Chỉ
   - Người dùng ép buộc qua --force_own_colmap (vd để đối chiếu/nghi ngờ dữ liệu).
 
 Ví dụ:
-    python 01_run_colmap.py --scene HCM0181
-    python 01_run_colmap.py --all --split public
-    python 01_run_colmap.py --scene HCM0249 --force_own_colmap --matching exhaustive
+    python 01_run_colmap.py --scene HCM0421
+    python 01_run_colmap.py --all --domain bts
+    python 01_run_colmap.py --scene chair --force_own_colmap --matching exhaustive
 
 Output: pipeline/work/<scene>/colmap/dense/{images/, sparse/0/}
         -> đây chính là thư mục để đưa vào train.py của gaussian-splatting.
@@ -40,19 +40,25 @@ def _report_missing_images(scene: Scene, result: dict) -> None:
 
 
 def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: bool,
-                   overwrite: bool, force_own_colmap: bool):
+                   overwrite: bool, force_own_colmap: bool, images_dir: Path | None = None):
+    """images_dir: override ảnh input (mặc định scene.train_images_dir) — dùng khi train
+    ở chế độ holdout-eval (plan.md mục 4), truyền
+    pipeline/work/<scene>/holdout/train_images (chỉ symlink ~85-90% ảnh KHÔNG bị holdout).
+    Cơ chế `_find_missing_images` có sẵn trong colmap_runner.py sẽ tự loại các ảnh
+    holdout khỏi sparse (coi như "thiếu file trên đĩa"), không cần code lọc riêng."""
+    images_dir = images_dir if images_dir is not None else scene.train_images_dir
     workdir = WORK_ROOT / scene.name / "colmap"
     log_path = WORK_ROOT / scene.name / "01_run_colmap.log"
 
     if scene.has_valid_provided_sparse() and not force_own_colmap:
-        print(f"===== {scene.name} ({scene.split}) — dùng sparse có sẵn (bỏ qua tự chạy COLMAP) =====")
+        print(f"===== {scene.name} ({scene.domain}) — dùng sparse có sẵn (bỏ qua tự chạy COLMAP) =====")
         result = use_provided_sparse(
-            images_dir=scene.train_images_dir,
+            images_dir=images_dir,
             sparse_dir=scene.provided_sparse_dir,
             workdir=workdir,
             log_path=log_path,
         )
-        n_total = len(list(scene.train_images_dir.glob("*")))
+        n_total = len(list(images_dir.glob("*")))
         print(f"-> {result['num_reg_images']}/{n_total} ảnh, {result['num_points3D']} điểm 3D (từ sparse có sẵn). "
               f"Dense: {result['dense_dir']} | Log: {result['log_path']}")
         _report_missing_images(scene, result)
@@ -66,9 +72,9 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
         elif camera_model == "PINHOLE":
             camera_params_prior = f"{fx},{fx},{cx},{cy}"
 
-    print(f"===== {scene.name} ({scene.split}) — tự chạy COLMAP ({matching}, {camera_model}) =====")
+    print(f"===== {scene.name} ({scene.domain}) — tự chạy COLMAP ({matching}, {camera_model}) =====")
     result = run_colmap_scene(
-        images_dir=scene.train_images_dir,
+        images_dir=images_dir,
         workdir=workdir,
         matching=matching,
         camera_model=camera_model,
@@ -76,7 +82,7 @@ def process_scene(scene: Scene, matching: str, camera_model: str, use_prior: boo
         overwrite=overwrite,
         log_path=log_path,
     )
-    n_total = len(list(scene.train_images_dir.glob("*")))
+    n_total = len(list(images_dir.glob("*")))
     print(f"-> {result['num_reg_images']}/{n_total} ảnh đăng ký, {result['num_points3D']} điểm 3D. "
           f"Dense: {result['dense_dir']} | Log chi tiết: {result['log_path']}")
     _report_missing_images(scene, result)
@@ -91,8 +97,8 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--scene", help="Tên 1 scene, vd HCM0181, HCM0249, hcm0031")
     g.add_argument("--all", action="store_true", help="Chạy toàn bộ scene")
-    ap.add_argument("--split", choices=["public", "private"], default=None,
-                     help="Chỉ dùng với --all, giới hạn public_set hoặc private_set1")
+    ap.add_argument("--domain", choices=["bts", "generic"], default=None,
+                     help="Chỉ dùng với --all, giới hạn scene BTS hoặc scene tổng quát (bonsai/chair)")
     ap.add_argument("--force_own_colmap", action="store_true",
                      help="Ép tự chạy COLMAP dù scene đã có sparse hợp lệ (vd để đối chiếu/nghi ngờ dữ liệu)")
     ap.add_argument("--matching", default="sequential", choices=["sequential", "exhaustive"],
@@ -102,16 +108,29 @@ def main():
     ap.add_argument("--no_prior", action="store_true",
                      help="Không dùng fx/cx/cy từ test_poses.csv làm prior, để COLMAP tự đoán từ EXIF/heuristic")
     ap.add_argument("--overwrite", action="store_true", help="Chạy lại từ đầu, xoá database.db cũ")
+    ap.add_argument("--holdout", action="store_true",
+                     help="Train ở chế độ holdout-eval (plan.md mục 4): dùng "
+                          "pipeline/work/<scene>/holdout/train_images (~85-90% ảnh, đã tạo "
+                          "bằng 00_make_holdout_split.py) thay vì scene.train_images_dir đầy đủ "
+                          "— để đo Score trên holdout trước khi retrain lần cuối trên 100% ảnh.")
     args = ap.parse_args()
 
     if args.scene:
         scenes = [get_scene(args.scene)]
     else:
-        scenes = all_scenes(args.split)
+        scenes = all_scenes(args.domain)
 
     for scene in scenes:
+        images_dir = None
+        if args.holdout:
+            images_dir = WORK_ROOT / scene.name / "holdout" / "train_images"
+            if not images_dir.exists():
+                raise SystemExit(
+                    f"{scene.name}: --holdout nhưng chưa có {images_dir} — chạy "
+                    f"00_make_holdout_split.py --scene {scene.name} trước."
+                )
         process_scene(scene, args.matching, args.camera_model, not args.no_prior,
-                      args.overwrite, args.force_own_colmap)
+                      args.overwrite, args.force_own_colmap, images_dir=images_dir)
 
 
 if __name__ == "__main__":

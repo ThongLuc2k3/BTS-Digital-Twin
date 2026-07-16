@@ -17,6 +17,7 @@ sang PINHOLE sạch (không méo) trước khi đưa vào 3D Gaussian Splatting 
 trình chuẩn mà chính script convert.py của graphdeco-inria/gaussian-splatting dùng
 (feature_extractor -> matcher -> mapper -> image_undistorter).
 """
+import shutil
 from pathlib import Path
 
 import pycolmap
@@ -74,6 +75,14 @@ def _undistort_and_fix_layout(sparse_dir: Path, images_dir: Path, dense_dir: Pat
         input_sparse_dir = workdir / "_sparse_filtered"
         input_sparse_dir.mkdir(parents=True, exist_ok=True)
         rec.write_binary(input_sparse_dir)
+
+    # Dọn sạch dense_dir trước khi ghi — nếu chạy lại trên cùng workdir với tập
+    # ảnh khác (vd chuyển từ chế độ holdout-eval sang final retrain 100% ảnh),
+    # pycolmap.undistort_images ghi đè lên state cũ có thể crash khó hiểu (đã
+    # gặp thật: "Uncaught exceptions in thread pool destructor" khi dense_dir cũ
+    # còn sparse/images ứng với tập ảnh thiếu khác) thay vì báo lỗi rõ ràng.
+    if dense_dir.exists():
+        shutil.rmtree(dense_dir)
 
     pycolmap.undistort_images(
         output_path=dense_dir,

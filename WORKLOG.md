@@ -680,3 +680,39 @@ COLMAP) rồi đóng gói lại, nộp bản #2.
 - **Việc còn thiếu để dùng Phase D cho 4 scene BTS còn lại** (`HCM0539/0540/0644/0674`):
   cần agent tự xem 1 ảnh train/scene (đã chứng minh làm được, xem trên) rồi thêm entry
   vào `_ANTENNA_REF` — CHƯA làm (ưu tiên thấp hơn Phase E đang chạy).
+
+### 2026-07-18 — KẾT QUẢ THẬT: DEPTH_PRIOR=1 (fix OOM) trên HCM0421 — fix OOM thành công, nhưng B vẫn thua A (công bằng, 15000 iter)
+- User chạy 2 lần (`Result/Test1/`, `Result/Test2/`), cùng cấu hình
+  `ANTIALIASING=1, DEPTH_PRIOR=1, ANTENNA_FOCUS=0`, `MODE=holdout`.
+- **Tin tốt: FIX OOM THÀNH CÔNG** — cả 2 lần train đều chạy hết 15000/15000
+  iteration, không OOM (trước đó 6/6 scene fail ở mức 59-97%). Xác nhận
+  `SH_DEGREE=2` + `DENSIFY_GRAD_THRESHOLD=0.0004` (tự bật khi `DEPTH_PRIOR=1`) đủ để
+  tránh OOM cho `HCM0421` ở cấu hình depth-prior.
+- **Score đo được (công bằng 100% — cả A và B đều ở đúng 15000 iteration lần này)**:
+  - Test1: PSNR=21.108, SSIM=0.6566, LPIPS=0.1989, **Score=0.6441**
+  - Test2: PSNR=21.115, SSIM=0.6570, LPIPS=0.1981, **Score=0.6445**
+  - 2 lần ra gần như giống hệt nhau (chênh 0.0004) — kết quả ổn định, đáng tin.
+  - **So với cấu hình A (0.6616, 15000 iter)**: B thua **-0.017** (~-1.7 điểm thang
+    x100) — **KẾT LUẬN: cấu hình A vẫn thắng cho HCM0421**, kể cả khi so công bằng.
+    Có khả năng do đánh đổi chất lượng của chính fix OOM (`SH_DEGREE` 3→2,
+    `DENSIFY_GRAD_THRESHOLD` cao hơn giảm số Gaussian) lớn hơn lợi ích depth-prior
+    mang lại — không tách bạch được nguyên nhân thuần tuý (đã ghi chú trước khi test).
+  - **Củng cố quyết định Stage 1 đã chốt trước đó** (dùng A cho 5 scene BTS + bonsai,
+    B cho `chair`) — không cần đổi.
+- **Bug thật tìm thấy + đã sửa (không nghiêm trọng, nhưng gây nhiễu)**: `Test2` có
+  thêm 1 lỗi ở cell backup coarse-to-fine (`03_train_3dgs_progressive.sh`) —
+  `FileNotFoundError` vì cell train chính (Bước 6) đã train xong + tự dọn
+  `colmap/dense/images/`, nhưng cell backup phía dưới (chỉ nên chạy NẾU cell trên bị
+  OOM) vẫn tự chạy tiếp theo (do "Run All" chạy tuần tự không tự biết cell trên đã
+  thành công). Verify: `eval_metrics.txt` của Test2 vẫn ra số ĐÚNG (khớp Test1) —
+  KHÔNG hỏng checkpoint đã có (progressive script crash ngay ở bước nạp ảnh, trước
+  khi ghi đè bất kỳ file nào). Đã sửa `kaggle_private.ipynb`: cell backup giờ tự
+  kiểm tra checkpoint cuối đã tồn tại chưa, có rồi thì tự bỏ qua (in rõ lý do) thay
+  vì chạy mù rồi crash — an toàn để "Run All" tuần tự từ giờ, không cần tự tay skip.
+- **Quyết định**: KHÔNG cần thử `RESOLUTION=2` hay coarse-to-fine nữa cho
+  `DEPTH_PRIOR` trên nhóm BTS — fix đơn giản đã đủ về mặt kỹ thuật (không OOM), và
+  Score vẫn thua A nên depth-prior không đáng dùng cho BTS dù có chạy được. Script
+  backup coarse-to-fine giữ nguyên trong repo (đã test kỹ, có thể cần cho tình huống
+  khác sau này) nhưng không còn là việc cần làm ngay.
+- Commit + push (cần làm): file `kaggle_private.ipynb` (fix cell backup) đã sửa,
+  chưa commit — sẽ làm ở bước tiếp theo cùng cập nhật WORKLOG này.

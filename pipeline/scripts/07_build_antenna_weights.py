@@ -38,8 +38,41 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common.scenes import get_scene
 
 
+def _detect_points2d_scale(rec: "pycolmap.Reconstruction") -> float:
+    """BUG THẬT tìm thấy + fix (2026-07-18) — giống hệt bug đã phát hiện ở
+    `11_trr_refine.py::_detect_points2d_scale`, nhưng đây là sparse KHÁC
+    (`pipeline/work/<scene>/colmap/dense/sparse/0`, do `01_run_colmap.py` tự sinh qua
+    COLMAP `image_undistorter`, không phải `scene.provided_sparse_dir` gốc BTC cấp).
+    Verify thực nghiệm: `image_undistorter` viết lại ĐÚNG `camera.width/height` khớp
+    ảnh `train/images/` thật, nhưng KHÔNG viết lại `points2D[i].xy` — field này vẫn ở
+    ĐỘ PHÂN GIẢI GỐC (trước khi BTC hạ xuống), lệch `camera.width/height/fx/fy` đúng hệ
+    số "Scale" ở plan.md mục 2. Đo trực tiếp bằng dữ liệu COLMAP thật cục bộ (không suy
+    đoán): HCM0421 lệch 3.904x, chair 1.500x, bonsai 1.000x (không lệch) — khớp chính
+    xác plan.md. Nếu KHÔNG sửa, `find_antenna_bbox3d()` so khung pixel người dùng nhập
+    (theo đúng kích thước ảnh thật họ đang xem) với `point2d.xy` (lớn hơn ~4x cho
+    HCM0421) — gần như chắc chắn lọc ra 0 điểm (báo lỗi rõ) hoặc tệ hơn, tình cờ lọc
+    trúng vài điểm SAI hoàn toàn vị trí, ra bbox 3D rác mà không có lỗi báo."""
+    best_img = max(rec.images.values(), key=lambda im: im.num_points3D)
+    obs = best_img.get_observation_points2D()
+    ratios = []
+    for o in obs:
+        proj = best_img.project_point(rec.points3D[o.point3D_id].xyz)
+        if proj is None or proj[0] <= 1 or proj[1] <= 1:
+            continue
+        ratios.append(o.xy[0] / proj[0])
+        ratios.append(o.xy[1] / proj[1])
+    if not ratios:
+        return 1.0
+    scale = float(np.median(ratios))
+    if abs(scale - 1.0) > 0.02:
+        print(f"  [LƯU Ý] points2D.xy lệch camera intrinsics theo hệ số {scale:.4f}x "
+              f"(khớp cột 'Scale' của plan.md) — tự chia lại toạ độ trước khi lọc khung.")
+    return scale
+
+
 def find_antenna_bbox3d(rec: "pycolmap.Reconstruction", ref_image_name: str,
-                         box: tuple[float, float, float, float], margin: float) -> np.ndarray:
+                         box: tuple[float, float, float, float], margin: float,
+                         points2d_scale: float) -> np.ndarray:
     ref_image = None
     for image in rec.images.values():
         if image.name == ref_image_name:
@@ -57,6 +90,7 @@ def find_antenna_bbox3d(rec: "pycolmap.Reconstruction", ref_image_name: str,
         if not point2d.has_point3D():
             continue
         x, y = point2d.xy
+        x, y = x / points2d_scale, y / points2d_scale  # về đúng hệ toạ độ ảnh thật (--box nhập theo)
         if x0 <= x <= x1 and y0 <= y <= y1:
             pts3d.append(rec.points3D[point2d.point3D_id].xyz)
 
@@ -142,7 +176,8 @@ def main():
         raise SystemExit(f"Không thấy {sparse_dir} — chạy 01_run_colmap.py --scene {scene.name} trước.")
 
     rec = pycolmap.Reconstruction(sparse_dir)
-    bbox3d = find_antenna_bbox3d(rec, args.ref_image, tuple(args.box), args.margin)
+    points2d_scale = _detect_points2d_scale(rec)
+    bbox3d = find_antenna_bbox3d(rec, args.ref_image, tuple(args.box), args.margin, points2d_scale)
     images_out = project_bbox_to_images(rec, bbox3d)
 
     n_total = rec.num_reg_images()

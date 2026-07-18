@@ -60,13 +60,20 @@ Kế hoạch chi tiết đầy đủ: xem `plan.md` (roadmap Phase 0 → E).
       `blend_alpha` bằng `11_trr_refine.py`, đo Score thật có tăng không trước khi bật
       vào pipeline nộp bài (plan.md mục 6.3).
 - [ ] (Sau khi có bản nộp an toàn, nếu còn thời gian) Phase D — antenna-focus (chỉ 5
-      scene BTS): **hạ tầng đã kiểm chứng cục bộ sẵn sàng** (xem lịch sử "Pre-flight
-      antenna patch" bên dưới) nhưng cần thêm 1 việc THỦ CÔNG chưa làm: với MỖI scene
-      BTS, chọn 1 ảnh train thấy rõ ăn-ten + xác định bbox pixel
-      (`07_build_antenna_weights.py --scene <tên> --ref_image <tên ảnh> --box XMIN YMIN
-      XMAX YMAX`) — việc này cần mắt người xem ảnh, agent không tự làm được.
-      `kaggle_private.ipynb` cũng CHƯA có cell tự chạy 2 script này trước train — cần
-      thêm nếu quyết định làm Phase D.
+      scene BTS): **hạ tầng + bug scale đã sửa, đã wiring vào notebook, đã có
+      `antenna_weights.json` thật cho `HCM0421`** (xem lịch sử "phát hiện bug nghiêm
+      trọng ở antenna-focus" 2026-07-18) — set `ANTENNA_FOCUS=1` là chạy được ngay cho
+      `HCM0421`. 4 scene BTS còn lại (`HCM0539/0540/0644/0674`) CHƯA có entry trong
+      `_ANTENNA_REF` (cell antenna trong `kaggle_private.ipynb`) — agent tự xem ảnh
+      train + chọn khung được (đã chứng minh khả thi), chỉ cần làm khi quyết định mở
+      rộng Phase D ra ngoài scene proxy.
+- [ ] (Ưu tiên thấp, chỉ nếu rất dư thời gian) `feature/gsplat-mcmc` — pipeline train
+      thay thế (rasterizer `gsplat` + MCMC densification), có code sẵn ở nhánh cũ
+      round-1 nhưng CHƯA port sang round-2 (cấu trúc dataset khác, giống công port
+      mip-splatting/depth-anything-v2 đã làm nhưng tốn công hơn vì là pipeline SONG
+      SONG khác hẳn, không phải chỉ thêm cờ). plan.md mục 6.2: chỉ đáng thử cho
+      `bonsai` (scene indoor dày Gaussian) — round 1 kết luận "chưa thắng" trên BTS
+      không tự động đúng cho domain khác.
 - [ ] Backlog (chưa làm, không chặn): `pipeline/kaggle_public.ipynb` giờ lỗi thời hoàn
       toàn (round-1, sẽ crash trên dataset round-2) — có vài cell trực quan hoá hữu ích
       (biểu đồ Score/ảnh, xem N ảnh tệ nhất theo PSNR) đáng port sang
@@ -623,3 +630,53 @@ COLMAP) rồi đóng gói lại, nộp bản #2.
   không đụng luồng chính đang dùng cho Phase E thật.
 - **CHƯA test thật trên GPU** — đây là backup, chỉ dùng nếu fix đơn giản
   (SH_DEGREE=2/DENSIFY_GRAD_THRESHOLD=0.0004) ở `03_train_3dgs.sh` không đủ.
+
+### 2026-07-18 — User hỏi "còn ý tưởng khả thi nào chưa thử" — rà nhánh cũ + phát hiện bug nghiêm trọng ở antenna-focus
+- Rà 2 nhánh kỹ thuật round-1 chưa port: `feature/gsplat-mcmc` (pipeline train bằng
+  `gsplat` + MCMC densification, có sẵn code — plan.md mục 6.2 gợi ý đáng thử cho
+  `bonsai`) và `compact/compact-gaussian` (plan.md đã ghi rõ "rủi ro cao, không đủ
+  effort để debug", giữ nguyên quyết định bỏ qua). `gsplat-mcmc` là pipeline train
+  SONG SONG hoàn toàn khác (rasterizer khác `graphdeco-inria`), port tốn công hơn
+  nhiều so với việc chỉ thêm cờ vào `train.py` gốc (như mip-splatting/depth-prior đã
+  làm) — xếp ưu tiên THẤP hơn Phase D/E vì chỉ đáng thử cho 1/7 scene (`bonsai`).
+- **Dùng khả năng đọc ảnh trực tiếp xem 2 ảnh train thật của `HCM0421`** để tự xác
+  định vị trí ăn-ten (việc trước đây coi là "cần mắt người", té ra agent tự làm được)
+  — chuẩn bị cho Phase D (antenna-focus).
+- **Phát hiện bug nghiêm trọng khi thử chạy `07_build_antenna_weights.py` thật với
+  dữ liệu COLMAP cục bộ của `HCM0421`**: script đọc thẳng `points2D.xy` từ
+  `pipeline/work/<scene>/colmap/dense/sparse/0` (sparse do `01_run_colmap.py` tự
+  sinh qua COLMAP `image_undistorter`) mà KHÔNG quy đổi scale — đúng loại bug đã tìm
+  thấy ở `11_trr_refine.py` trước đây (`_detect_points2d_scale`), nhưng ở 1 sparse
+  KHÁC (script TRR đọc `scene.provided_sparse_dir` gốc BTC, còn script này đọc sparse
+  tự sinh sau undistort) — **tưởng đã tránh được bug vì dùng nguồn khác, hoá ra
+  KHÔNG**: verify bằng dữ liệu thật, `image_undistorter` viết lại ĐÚNG
+  `camera.width/height` nhưng KHÔNG viết lại `points2D.xy` — vẫn lệch y hệt hệ số cũ
+  (HCM0421 **3.9042x**, khớp cột "Scale" plan.md; chair 1.4999x; bonsai 1.0000x —
+  test cả 3 scene bằng sparse thật cục bộ). Hệ quả nếu KHÔNG sửa: người dùng nhập
+  khung pixel theo đúng ảnh thật đang xem sẽ **LUÔN lọc ra 0 điểm 3D** (verify bằng
+  chính khung đã chọn cho HCM0421 — 0 điểm nếu không chia lại scale, 21 điểm nếu có)
+  → `07_build_antenna_weights.py` **CHƯA BAO GIỜ CHẠY ĐƯỢC** cho tới hôm nay, dù đã
+  qua "pre-flight" patch-compat check trước đó (check đó chỉ verify `train.py` áp
+  patch sạch, không test nhánh đọc `points2D.xy` này).
+- **Đã sửa** `pipeline/scripts/07_build_antenna_weights.py`: thêm
+  `_detect_points2d_scale()` (giống TRR, đo tại runtime, không hardcode số) + chia lại
+  toạ độ `points2D.xy` trước khi lọc theo khung `--box`. Verify bằng dữ liệu COLMAP
+  thật cục bộ (3 scene có sẵn sparse từ Phase 0): scale đo được khớp chính xác cột
+  "Scale" plan.md cho cả 3.
+- **Đã tự chọn khung ăn-ten cho `HCM0421`** (ảnh `DJI_20241230093301_0003_V.JPG`, box
+  `600 370 770 930`, verify bằng crop + vẽ khung đè lên ảnh thật trước khi chốt) — chạy
+  thật script đã sửa: 21 điểm 3D lọt khung, bbox 3D hợp lý, chiếu được vào 240/240 ảnh
+  train, coverage trung bình 0.65 (khá cao — hợp lý vì đây là drone survey xoay quanh
+  sát chính toà nhà có ăn-ten này, không phải lỗi). Đã ghi thật
+  `pipeline/work/HCM0421/antenna_weights.json` — dùng được ngay.
+- **Đã wiring vào `kaggle_private.ipynb`**: thêm cell mới (giữa cell cài Depth-Anything-V2
+  và cell train) — nếu `ANTENNA_FOCUS=1`: tự vá `GS_REPO` (gọi `apply_antenna_patch.py`
+  nếu chưa vá, không vá lại nếu đã vá), tự sinh `antenna_weights.json` cho scene hiện
+  tại nếu có trong bảng tra `_ANTENNA_REF` (mới có `HCM0421`) — scene BTS khác chưa có
+  entry sẽ in cảnh báo rõ + train bình thường (không crash). Verify: `nbformat.validate()`
+  sạch; multi-line `!python ... \` bên trong khối `if:` đúng pattern đã dùng thật (và
+  chạy thành công) ở cell render `04_render_test_poses.py` cùng notebook — không phải
+  cú pháp mới chưa kiểm chứng.
+- **Việc còn thiếu để dùng Phase D cho 4 scene BTS còn lại** (`HCM0539/0540/0644/0674`):
+  cần agent tự xem 1 ảnh train/scene (đã chứng minh làm được, xem trên) rồi thêm entry
+  vào `_ANTENNA_REF` — CHƯA làm (ưu tiên thấp hơn Phase E đang chạy).

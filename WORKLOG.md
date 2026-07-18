@@ -59,14 +59,12 @@ Kế hoạch chi tiết đầy đủ: xem `plan.md` (roadmap Phase 0 → E).
       cục bộ, chỉ có `eval_metrics.txt`/notebook) để tune `k_neighbors`/`patch_size`/
       `blend_alpha` bằng `11_trr_refine.py`, đo Score thật có tăng không trước khi bật
       vào pipeline nộp bài (plan.md mục 6.3).
-- [ ] (Sau khi có bản nộp an toàn, nếu còn thời gian) Phase D — antenna-focus (chỉ 5
-      scene BTS): **hạ tầng + bug scale đã sửa, đã wiring vào notebook, đã có
-      `antenna_weights.json` thật cho `HCM0421`** (xem lịch sử "phát hiện bug nghiêm
-      trọng ở antenna-focus" 2026-07-18) — set `ANTENNA_FOCUS=1` là chạy được ngay cho
-      `HCM0421`. 4 scene BTS còn lại (`HCM0539/0540/0644/0674`) CHƯA có entry trong
-      `_ANTENNA_REF` (cell antenna trong `kaggle_private.ipynb`) — agent tự xem ảnh
-      train + chọn khung được (đã chứng minh khả thi), chỉ cần làm khi quyết định mở
-      rộng Phase D ra ngoài scene proxy.
+- [x] Phase D — antenna-focus: **ĐÃ TEST xong trên scene proxy `HCM0421`** (Test3,
+      2026-07-18) — Score gần như hoà với A (0.6611 vs 0.6616, trong biên độ nhiễu),
+      KHÔNG cải thiện Score tổng đo được. **Quyết định: không dùng cho Phase E** (xem
+      "CHỐT Stage 1 cho HCM0421 sau 3 test thật" ở lịch sử bên dưới) — không cần mở
+      rộng `_ANTENNA_REF` sang 4 scene BTS còn lại nữa, trừ khi user muốn thử lại với
+      lý do khác (vd tăng `--antenna_weight` hoặc chọn khung khác).
 - [ ] (Ưu tiên thấp, chỉ nếu rất dư thời gian) `feature/gsplat-mcmc` — pipeline train
       thay thế (rasterizer `gsplat` + MCMC densification), có code sẵn ở nhánh cũ
       round-1 nhưng CHƯA port sang round-2 (cấu trúc dataset khác, giống công port
@@ -716,3 +714,33 @@ COLMAP) rồi đóng gói lại, nộp bản #2.
   khác sau này) nhưng không còn là việc cần làm ngay.
 - Commit + push (cần làm): file `kaggle_private.ipynb` (fix cell backup) đã sửa,
   chưa commit — sẽ làm ở bước tiếp theo cùng cập nhật WORKLOG này.
+
+### 2026-07-18 — CHỐT Stage 1 cho HCM0421 sau 3 test thật: A vẫn thắng, đóng thí nghiệm
+- `Result/Test3/`: cấu hình C (`ANTIALIASING=1, DEPTH_PRIOR=0, ANTENNA_FOCUS=1`) trên
+  `HCM0421`, `MODE=holdout`. Antenna patch áp sạch (8/8 chỗ), `antenna_weights.json`
+  sinh đúng (21 điểm 3D, chiếu vào 210/210 ảnh train của holdout — khớp 210/240 vì
+  đang ở chế độ holdout). Train sạch, hết 15000/15000, không lỗi.
+- **Bảng tổng hợp cả 3 thí nghiệm trên `HCM0421` (đều 15000 iteration, so công bằng)**:
+
+  | Cấu hình | Score |
+  |---|---|
+  | A (baseline) | **0.6616** |
+  | B = A + depth_prior (fix OOM, Test1) | 0.6441 |
+  | B = A + depth_prior (fix OOM, Test2) | 0.6445 |
+  | C = A + antenna-focus (Test3) | 0.6611 |
+
+  - Depth-prior: thua rõ (-0.017), đã kết luận ở mục trước.
+  - Antenna-focus: **gần như hoà** (0.6611 vs 0.6616, chênh -0.0005 — nằm trong biên độ
+    nhiễu tự nhiên giữa 2 lần chạy CÙNG cấu hình, xem Test1 vs Test2 chênh 0.0004).
+    Không cải thiện Score TỔNG THỂ đo được — hợp lý vì Score tính trung bình trên toàn
+    bộ 30 ảnh holdout (đa số không phải cận cảnh ăn-ten), nên dù ăn-ten có nét hơn cục
+    bộ, tác động lên Score trung bình rất nhỏ, không đo được rõ ràng bằng phép đo hiện
+    tại (PSNR/SSIM/LPIPS toàn ảnh).
+- **CHỐT quyết định Stage 1 cho `HCM0421` (và suy rộng nhóm 5 scene BTS)**: dùng
+  **cấu hình A** (antialiasing-only) — cả depth-prior lẫn antenna-focus đều KHÔNG cho
+  thấy lợi ích đo được trên Score tổng, không đáng đánh đổi thêm rủi ro/thời gian.
+  `chair` giữ nguyên dùng B (thắng thật, đã xác nhận công bằng ở Phase A/B trước đó).
+- **Đóng vòng thí nghiệm trên scene proxy `HCM0421`** — không còn thí nghiệm nào đang
+  chờ. Chuyển hẳn sang Phase E (train final + đóng gói nộp bài) theo đúng bảng cấu
+  hình đã chốt, xem "CHỐT — checklist chạy Phase E" ở trên (không đổi gì so với bảng
+  đó — vẫn A cho 6 scene, B cho `chair`).

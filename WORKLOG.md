@@ -569,3 +569,57 @@ COLMAP) rồi đóng gói lại, nộp bản #2.
 - **Sửa lại nhận định SAI trước đó trong worklog** ("kaggle_submission.ipynb chưa cần
   sửa gì thêm", ghi ngày 2026-07-16) — nhận định đó SAI, chưa từng rà kỹ file này tới
   giờ mới phát hiện 2 bug thật ở trên.
+
+### 2026-07-18 — Đổi phương pháp test: chốt `HCM0421` làm scene proxy xuyên suốt
+- User đề xuất: từ giờ không bắt buộc test đủ 7 scene mỗi lần thử ý tưởng mới — chỉ
+  chạy 1 scene cố định, coi Score scene đó là tín hiệu đại diện cho hướng đi, tiết
+  kiệm GPU quota Kaggle. Đã đồng ý với 1 lưu ý: hợp lý cho nhóm 5 scene BTS (Score
+  Phase A đồng đều 0.654-0.670) nhưng `chair`/`bonsai` (domain khác) đã cho thấy phản
+  ứng khác hẳn với depth-prior — ý tưởng thắng trên proxy chỉ áp chắc cho nhóm BTS,
+  còn `chair`/`bonsai` cần spot-check riêng trước khi áp.
+- **Chốt `HCM0421` làm scene test xuyên suốt** — đã có sẵn lịch sử baseline (A/B) để
+  so sánh ngay không cần chạy lại từ đầu.
+- Hàng đợi test trên `HCM0421`: (1) DEPTH_PRIOR=1 + fix OOM hiện tại — ĐANG CHỜ user
+  chạy; (2) nếu vẫn OOM: dùng script backup coarse-to-fine (xem mục dưới); (3) nếu (1)
+  ổn: thử cấu hình C = B + antenna-focus; (4) Phase C (TRR) tune trên render thật.
+
+### 2026-07-18 — Xây + test xong script backup: train coarse-to-fine (progressive resolution)
+- User đề xuất ý tưởng: nếu vẫn OOM, thử train giai đoạn đầu ở độ phân giải Gaussian
+  THẤP hơn (ít Gaussian sinh ra, nhẹ VRAM), sau đó "upsample" tiếp tục train ở độ phân
+  giải cao dần tới đúng yêu cầu, thay vì sinh Gaussian trực tiếp ở kích thước đầy đủ.
+- **Đã tra trực tiếp source thật của `gaussian-splatting`** (bản đã pin, KHÔNG suy
+  đoán) để xác nhận tính khả thi trước khi code: `--resolution` nạp lại mỗi lần chạy
+  process (không đông cứng trong checkpoint); `--start_checkpoint <path>.pth` khôi
+  phục ĐẦY ĐỦ Gaussian + optimizer + số iteration đã chạy (`first_iter`, không phải
+  chỉ load `.ply` tĩnh); `spatial_lr_scale` tính từ world-space, không phụ thuộc
+  resolution ảnh. **Phát hiện quan trọng phụ**: `densify_until_iter` mặc định CỐ ĐỊNH
+  15000 (không tự co giãn theo `--iterations`) — giải thích được vì sao OOM hay xảy ra
+  ở bản holdout (`ITERATIONS=15000` trùng khớp `densify_until_iter`, densify chạy suốt
+  không bao giờ ổn định) mà bản final (`ITERATIONS=30000`) có thể ít rủi ro hơn (nửa
+  sau 15000-30000 không sinh thêm Gaussian) — CHƯA kiểm chứng thật trên GPU.
+- **Tạo mới** `pipeline/scripts/03_train_3dgs_progressive.sh` (không đụng
+  `03_train_3dgs.sh` đang chạy tốt cho Phase E thật — tách file riêng để cô lập rủi
+  ro). Nhận 1 scene/lần, chia N giai đoạn theo `PROGRESSIVE_RESOLUTIONS`/
+  `PROGRESSIVE_FRACTIONS` (mặc định 3 giai đoạn: resolution 4→2→1, tại 30%/60%/100%
+  ITERATIONS), tự nối checkpoint `.pth` giữa các giai đoạn, giữ nguyên các cờ
+  ANTIALIASING/DEPTH_PRIOR/EXPOSURE_COMP/SH_DEGREE/DENSIFY_GRAD_THRESHOLD như script
+  gốc. ANTENNA_FOCUS CHƯA hỗ trợ (báo lỗi rõ nếu bật nhầm — tổ hợp chưa test).
+- **Test end-to-end bằng train.py giả** (mock, vì không có GPU cục bộ) — dựng
+  `GS_REPO` giả nhận đúng chữ ký CLI thật, mô phỏng ghi `.ply`/`.pth`/`cfg_args`, chạy
+  qua `pipeline/work/_test_progressive/` (dọn sau khi test xong). **1 bug thật tìm
+  thấy + đã sửa**: kiểm tra "PROGRESSIVE_FRACTIONS phải tăng dần nghiêm ngặt" dùng
+  `python3 -c "..." | while read...` qua **process substitution** (`< <(...)`) —
+  `set -e` ở shell cha KHÔNG bắt được lỗi bên trong process substitution, nên khi
+  python assert fail (vd fractions "0.5 0.3 1.0", giảm ở giữa), script **ÂM THẦM chạy
+  tiếp** với ít giai đoạn hơn dự kiến (chỉ 1/3), in "xong toàn bộ" SAI sự thật thay vì
+  dừng lại báo lỗi — đúng lớp bug nguy hiểm nhất dự án này luôn cảnh giác (âm thầm
+  sai, không phải crash). Sửa: đổi sang `$(...)` (command substitution, exit code
+  check được tường minh bằng `||`). Verify lại: 8 kịch bản test (happy path 3 giai
+  đoạn, crash giữa giai đoạn 2 + phục hồi bằng checkpoint giai đoạn 1, 4 kiểu input
+  sai khác nhau, ANTENNA_FOCUS chặn đúng) — **tất cả đều đúng hành vi mong đợi** sau
+  fix, kể cả kịch bản vừa tìm ra bug.
+- **Đã thêm cell tuỳ chọn vào `kaggle_private.ipynb`** (chèn ngay sau cell train
+  chính, KHÔNG thay thế/tự động chạy) — user tự thay cell nếu cell train chính OOM,
+  không đụng luồng chính đang dùng cho Phase E thật.
+- **CHƯA test thật trên GPU** — đây là backup, chỉ dùng nếu fix đơn giản
+  (SH_DEGREE=2/DENSIFY_GRAD_THRESHOLD=0.0004) ở `03_train_3dgs.sh` không đủ.

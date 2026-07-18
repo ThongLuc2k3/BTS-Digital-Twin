@@ -34,3 +34,4 @@ Thumbs.db
 .env
 *.token
 VAI_NVS_DATA_ROUND2/
+Result/

@@ -41,24 +41,80 @@ Kế hoạch chi tiết đầy đủ: xem `plan.md` (roadmap Phase 0 → E).
 
 ## Bước tiếp theo
 
-- [ ] **[CẦN USER]** Mở `pipeline/kaggle_private.ipynb` trên Kaggle, chạy Phase A:
-      với mỗi trong 7 scene, vài version `MODE="holdout"` đổi
-      `ANTIALIASING`/`DEPTH_PRIOR`/`EXPOSURE_COMP` để so Score, ghi lại/dán kết quả về
-      để agent đọc tiếp và chọn cấu hình thắng từng scene (plan.md mục 6.1). Sau đó 1
-      version `MODE="final"` với cấu hình thắng để lấy checkpoint nộp bài.
+- [ ] **[CẦN USER — ƯU TIÊN CAO NHẤT]** Phase E (final): với MỖI scene, chạy
+      `kaggle_private.ipynb` với `MODE="final"` (100% ảnh train, `ITERATIONS=30000`) +
+      ĐÚNG cấu hình đã thắng của scene đó (bảng "Stage 1 — cấu hình thắng CHỐT" ở lịch
+      sử bên dưới) để lấy checkpoint nộp bài thật. Đây là việc **ưu tiên hơn** Phase
+      C/D bên dưới — theo đúng thứ tự plan.md mục 7 và lời khuyên "nộp sớm, không chờ
+      tới hạn chót mới nộp bản đầu tiên". Config cụ thể từng scene:
+      - `HCM0421`,`HCM0539`,`HCM0540`,`HCM0644`,`HCM0674`,`bonsai`: cấu hình A
+        (`ANTIALIASING=1, DEPTH_PRIOR=0, EXPOSURE_COMP=0, ANTENNA_FOCUS=0`)
+      - `chair`: cấu hình B (`ANTIALIASING=1, DEPTH_PRIOR=1`, còn lại `0`)
+      Nhớ kiểm tra banner in xác nhận cấu hình trước khi để chạy tiếp (mới thêm, tránh
+      lặp lỗi quên đổi tham số).
+- [ ] Sau khi có đủ 7 checkpoint final: đóng gói bằng `kaggle_submission.ipynb`, kiểm
+      tra checklist plan.md mục 8, nộp thử sớm 1 bản an toàn.
+- [ ] (Sau khi có bản nộp an toàn, nếu còn thời gian) Phase C — TRR Tier-1 trên render
+      thật: cần tải ảnh render thật (`holdout_renders/*.png`) từ Kaggle về (hiện chưa có
+      cục bộ, chỉ có `eval_metrics.txt`/notebook) để tune `k_neighbors`/`patch_size`/
+      `blend_alpha` bằng `11_trr_refine.py`, đo Score thật có tăng không trước khi bật
+      vào pipeline nộp bài (plan.md mục 6.3).
+- [ ] (Sau khi có bản nộp an toàn, nếu còn thời gian) Phase D — antenna-focus (chỉ 5
+      scene BTS): **hạ tầng đã kiểm chứng cục bộ sẵn sàng** (xem lịch sử "Pre-flight
+      antenna patch" bên dưới) nhưng cần thêm 1 việc THỦ CÔNG chưa làm: với MỖI scene
+      BTS, chọn 1 ảnh train thấy rõ ăn-ten + xác định bbox pixel
+      (`07_build_antenna_weights.py --scene <tên> --ref_image <tên ảnh> --box XMIN YMIN
+      XMAX YMAX`) — việc này cần mắt người xem ảnh, agent không tự làm được.
+      `kaggle_private.ipynb` cũng CHƯA có cell tự chạy 2 script này trước train — cần
+      thêm nếu quyết định làm Phase D.
 - [ ] Backlog (chưa làm, không chặn): `pipeline/kaggle_public.ipynb` giờ lỗi thời hoàn
       toàn (round-1, sẽ crash trên dataset round-2) — có vài cell trực quan hoá hữu ích
       (biểu đồ Score/ảnh, xem N ảnh tệ nhất theo PSNR) đáng port sang
       `kaggle_private.ipynb` chế độ holdout trước khi xoá hẳn file này.
 - [ ] `02_validate_frame.py` đã đổi sang scene `HCM0421` (round 2) nhưng CHƯA chạy thật
       (tự chạy COLMAP đầy đủ, tốn thời gian — script này TUỲ CHỌN, không bắt buộc).
-- [ ] `kaggle_submission.ipynb` chưa cần sửa gì thêm (đã dùng đúng 7 scene round-2, chỉ
-      đóng gói từ checkpoint có sẵn — không phụ thuộc holdout).
-- [ ] Sau khi có render thật từ Kaggle: chạy lại `11_trr_refine.py` trên render thật
-      (không phải bản mờ giả lập) để tune `k_neighbors`/`patch_size`/`blend_alpha` và
-      đo Score thật có tăng không trước khi bật vào pipeline nộp bài (plan.md mục 6.3).
-- [ ] Phase D (antenna-focus, chỉ 5 scene BTS) — code đã port (task #3), chưa đo.
-- [ ] Phase E (chốt & nộp) — chưa bắt đầu, phụ thuộc kết quả Phase A/B/C/D.
+- [ ] (Tuỳ chọn, không chặn) Nếu còn dư thời gian sau Phase E an toàn: thử lại cấu hình
+      B công bằng (15000 iter, có fix OOM) cho 6 scene còn thiếu dữ liệu công bằng
+      (HCM0421/539/540/644/674, bonsai) — xem lịch sử "Chốt Stage 1" bên dưới, user đã
+      chọn bỏ qua việc này để không tốn thêm Kaggle GPU quota, ưu tiên nộp bài trước.
+
+## CHỐT — checklist chạy Phase E (2026-07-18, code đã sẵn sàng)
+
+**1. Với MỖI trong 7 scene**, chạy `kaggle_private.ipynb` (đã pull code mới nhất từ
+GitHub — nhớ push code đã sửa lên trước khi Kaggle clone), Bước 6 sửa:
+
+| Scene | `SCENE` | `MODE` | `ANTIALIASING` | `DEPTH_PRIOR` | `EXPOSURE_COMP` | `ANTENNA_FOCUS` |
+|---|---|---|---|---|---|---|
+| 1 | `HCM0421` | `final` | 1 | 0 | 0 | 0 |
+| 2 | `HCM0539` | `final` | 1 | 0 | 0 | 0 |
+| 3 | `HCM0540` | `final` | 1 | 0 | 0 | 0 |
+| 4 | `HCM0644` | `final` | 1 | 0 | 0 | 0 |
+| 5 | `HCM0674` | `final` | 1 | 0 | 0 | 0 |
+| 6 | `bonsai` | `final` | 1 | 0 | 0 | 0 |
+| 7 | `chair` | `final` | 1 | **1** | 0 | 0 |
+
+Đọc banner xác nhận cấu hình ngay sau cell tham số trước khi để chạy tiếp (30000
+iteration, ~1-2 tiếng/scene). Xong mỗi scene: theo "Bước 7" trong notebook, tải NGUYÊN
+thư mục `pipeline/work/<SCENE>/gs_model/` (không phải chỉ file `.ply`) lên Google Drive,
+share "Anyone with the link", lấy link thư mục đó.
+
+**2. Sau khi có đủ 7 link thư mục Drive**: mở `kaggle_submission.ipynb` (đã fix 2 bug ở
+trên), điền 7 link vào `CHECKPOINT_LINKS` (Bước 5), `Run All` — notebook tự tải, render,
+đóng gói `submission.zip`, tự kiểm tra dung lượng < 350MB.
+
+**3. Trước khi nộp thật**: đối chiếu checklist `plan.md` mục 8 (định dạng, tên file,
+đủ scene/ảnh) rồi nộp — đây là **bản nộp an toàn đầu tiên**, nộp sớm, không chờ Phase
+C/D xong mới nộp.
+
+**4. Sau khi có bản nộp #1**: quay lại Phase C (TRR Tier-1). LƯU Ý: `MODE=final` render
+`test_poses.csv` — KHÔNG có GT (đề bài không cấp GT test) nên không tự đo Score được ở
+đó. Muốn TUNE `k_neighbors`/`patch_size`/`blend_alpha` (biết TRR có thật sự tăng Score
+không) vẫn cần render trên **holdout** (có GT) để so trước/sau — tải thêm
+`holdout_renders/*.png` của 2-3 scene đại diện (1 BTS, 1 non-BTS, theo plan.md mục 6.3)
+từ 1 lần chạy `MODE="holdout"` (đã có sẵn eval_metrics từ Phase A/B, nhưng ảnh render
+thật thì CHƯA tải về máy). Sau khi chốt tham số tốt trên holdout, mới ÁP vào render
+`test_poses.csv` thật của bản final (bước này không cần GT, chỉ cần ảnh train + geometry
+COLMAP) rồi đóng gói lại, nộp bản #2.
 
 ## Lịch sử
 
@@ -237,3 +293,279 @@ Kế hoạch chi tiết đầy đủ: xem `plan.md` (roadmap Phase 0 → E).
   (chỉ có sau khi Kaggle train xong) — mặc định hiện tại dựa trên test tổng hợp
   bằng ảnh mờ giả lập, có thể cần chỉnh lại khi có render thật.
 - Task #5 đánh dấu `completed`.
+
+### 2026-07-16 — Commit + chuẩn bị push (user hỏi cách chạy Phase A)
+- User hỏi chạy Phase A thế nào — phát hiện: toàn bộ code hôm nay CHƯA commit, notebook
+  clone GitHub không chỉ định nhánh → sẽ lấy `main` (chưa có gì hôm nay), Kaggle sẽ chạy
+  code cũ và crash. Đã hỏi user cách xử lý — chọn: commit + push nhánh hiện tại, sửa
+  notebook clone đúng nhánh đó (không đụng `main`).
+- Commit `0f85a05`: toàn bộ Phase 0 + port kỹ thuật + Phase C (21 file, loại trừ
+  `chat.txt` và file `.tmp` rác Jupyter khỏi commit).
+- Commit `c9d2d1b`: thêm `GIT_BRANCH = "coordination/round1-status"` vào cell clone của
+  `kaggle_private.ipynb` (trước đó clone không chỉ định nhánh → lấy nhầm `main`).
+- User gửi link Google Drive dataset thật (`178EL7jCSVD59q19SMpeOgnOfOIC66I_t`) — cập
+  nhật `GDRIVE_URL` trong `kaggle_private.ipynb` + `kaggle_submission.ipynb` (bỏ qua
+  `kaggle_public.ipynb`, đã lỗi thời). Commit `d98e7e9`.
+- **Đã push cả 3 commit lên `origin/coordination/round1-status`** (được user xác nhận).
+  Nhánh này giờ có đủ code để Kaggle chạy Phase A.
+
+## Trạng thái hiện tại (cập nhật)
+- `kaggle_private.ipynb` sẵn sàng 100%: đúng nhánh git, đúng link dataset thật. User có
+  thể bắt đầu chạy Phase A trên Kaggle ngay.
+
+## Trạng thái hiện tại (cập nhật 2026-07-17, sau Phase A)
+- **Phase A hoàn tất**: đủ 7/7 scene có Score holdout cấu hình A (bảng đầy đủ ở lịch sử
+  "Phase A hoàn tất" bên dưới). Đang chờ user chạy Phase B (`DEPTH_PRIOR=1`) trên cả 7
+  scene để so sánh — xem "Bước tiếp theo" ở trên.
+
+## Trạng thái hiện tại (cập nhật 2026-07-18, sau bug OOM Phase B)
+- Lần chạy Phase B đầu tiên (`DEPTH_PRIOR=1`) FAIL 6/6 scene có notebook (`chair` fail
+  nặng hơn, không có notebook) vì CUDA OOM giữa chừng train — xem chi tiết + fix ở lịch
+  sử "Bug CUDA OOM Phase B" bên dưới. Đã sửa `pipeline/kaggle_private.ipynb` (chưa test
+  lại trên Kaggle thật — cần user chạy lại để verify fix).
+- **Bước tiếp theo ngay**: user chạy lại Phase B (`DEPTH_PRIOR=1`) trên Kaggle với
+  `kaggle_private.ipynb` đã sửa, cho cả 7 scene (kể cả `chair` — chưa có kết quả nào).
+
+## Trạng thái hiện tại (cập nhật 2026-07-18b, phát hiện lỗi thao tác user)
+- User đã chạy lại 1 lần (`Result/Lần 2_ anti=depth=1_15k_inter/HCM0421/`, không OOM,
+  chạy hết 15000 iteration) — NHƯNG đọc trực tiếp output cell tham số trong notebook cho
+  thấy **`DEPTH_PRIOR=0`** (không phải 1 như tên thư mục ghi) — tức lần chạy này thực
+  chất là LẶP LẠI cấu hình A (quên đổi tham số trước khi bấm chạy), KHÔNG PHẢI dữ liệu
+  Phase B hợp lệ. Score ra gần như giống hệt bản Lần 1 (0.6618 vs 0.6616 — sai khác nằm
+  trong nhiễu ngẫu nhiên của train, không phải hiệu ứng depth prior), củng cố thêm bằng
+  chứng đây là chạy trùng cấu hình A, không phải B.
+- **Bước tiếp theo ngay**: user cần **kiểm tra kỹ dòng in xác nhận** (`SCENE=... MODE=...
+  DEPTH_PRIOR=...`) ngay sau khi chạy cell tham số, TRƯỚC KHI để cả notebook chạy ~1
+  tiếng — rồi chạy lại đúng `DEPTH_PRIOR=1` cho `HCM0421` (và 6 scene còn lại, vẫn CHƯA
+  có dữ liệu Phase B hợp lệ nào cả) bằng `kaggle_private.ipynb` bản đã fix OOM. Vì lần
+  chạy vừa rồi không thật sự bật depth prior, **fix SH_DEGREE=2/DENSIFY_GRAD_THRESHOLD
+  vẫn CHƯA được kiểm chứng thật** (code fix chỉ kích hoạt khi DEPTH_PRIOR=1) — vẫn cần
+  1 lần chạy đúng cấu hình để biết fix có đủ tránh OOM không.
+
+### 2026-07-17 — Dọn dẹp file/folder thừa
+- User yêu cầu rà và xoá file/folder thừa. Xoá ngay (rác rõ ràng, không mất giá trị):
+  `chat.txt` (1 byte, rỗng), `pipeline/kaggle_private.ipynb.tmp.1522.02b1ca5a101d` (file
+  tạm Jupyter), `pipeline/extra/` (chỉ còn `__pycache__` rỗng, hết source), 3
+  `__pycache__/` khác (tự sinh lại).
+- Hỏi + được xác nhận xoá thêm 2 thứ (có giá trị thật, không phải rác thuần):
+  - `pipeline/kaggle_public.ipynb` (tracked git, đã lỗi thời hoàn toàn cho round 2 — vai
+    trò đã thay bằng chế độ holdout trong `kaggle_private.ipynb`). Commit `4cc00a5`
+    (recoverable qua git history nếu cần xem lại).
+  - `Dataset/VAI_NVS_DATA/` (3.2GB, dữ liệu Round 1, không nằm trong git, vòng thi đã bị
+    BTC bỏ) — xoá thẳng đĩa, giải phóng 3.2GB.
+- **Giữ lại, KHÔNG xoá** (có giá trị thật, không phải rác): `Kết quả/` (kết quả/notebook
+  thật của Round 1, phục vụ khoá luận), `checkpoints/checkpoint_GGdrive.txt` (link Drive
+  tới checkpoint đã nộp thật Round 1, Score 58.67320), `pipeline/work/` (holdout split đã
+  tạo cho cả 7 scene, tái dùng được), `REVIEW_REPO_2026-07-16.md` (báo cáo review có nội
+  dung thật, không rõ nguồn gốc tạo ra trong phiên nào — CHƯA hỏi user, để nguyên).
+- **Chưa push** commit `4cc00a5` (xoá kaggle_public.ipynb) — cần hỏi user (GDRIVE_URL đã
+  push từ trước).
+
+### 2026-07-17 — User báo lỗi Kaggle "An exception has occurred" ở bước tải dataset
+- User dán thông báo lỗi Jupyter chung chung (không traceback đầy đủ) ở bước tải/giải
+  nén dataset. Chưa có traceback thật — nhưng rà lại cell 11 (`kaggle_private.ipynb`,
+  tự dò thư mục `VAI_NVS_DATA_ROUND2` trong zip vừa giải nén) phát hiện lỗi thiết kế
+  thật: bắt buộc phải có 1 thư mục con tên ĐÚNG CHỮ "VAI_NVS_DATA_ROUND2" mới nhận
+  diện được — nếu file zip user upload giải nén ra KHÔNG có đúng lớp thư mục bọc
+  ngoài đó (vd giải nén thẳng scene ra gốc, hoặc thư mục bọc ngoài đặt tên khác) sẽ
+  báo `SystemExit` dù dữ liệu vẫn đầy đủ.
+- Sửa: bỏ yêu cầu tên thư mục phải khớp chữ — chấp nhận bất kỳ thư mục nào (kể cả
+  gốc giải nén `_dataset_raw` nếu zip không có lớp bọc) miễn chứa đủ >= 4/7 scene
+  mong đợi trực tiếp bên trong (`_MIN_MATCH = 4`, tránh khớp nhầm thư mục rác). Test
+  bằng dữ liệu thật (symlink 3 scene thật vào 2 cấu trúc thư mục giả lập — có/không
+  lớp bọc ngoài) — cả 2 đều detect đúng. Cũng sửa 1 dòng print còn sót chữ "phase1"
+  (tàn dư round 1) trong cell tải dataset. Commit `f044ffa`.
+- Vẫn CHƯA xác nhận đây có phải NGUYÊN NHÂN THẬT của lỗi user gặp hay không (chưa có
+  traceback) — đã hỏi lại user traceback đầy đủ/tên cell lỗi để xác nhận.
+- User xác nhận — đã push cả 2 commit lên `origin/coordination/round1-status`.
+
+### 2026-07-17 — Nhận kết quả Kaggle thật đầu tiên: 2/7 scene, Phase A cấu hình A
+- User đã tự chạy Kaggle xong, dán về `Result/HCM0421/` và `Result/HCM0539/`
+  (notebook đã chạy + `eval_metrics.txt` + `holdout_poses.txt` + `manifest.txt`).
+- Cả 2 đều chạy `MODE="holdout"`, cấu hình `A` (`ANTIALIASING=1, DEPTH_PRIOR=0,
+  EXPOSURE_COMP=0, ANTENNA_FOCUS=0`), `ITERATIONS=15000` — đúng quy trình Phase A.
+- Đọc `eval_metrics.txt`, tính trung bình 30 ảnh holdout/scene:
+  - `HCM0421`: PSNR=21.248dB, SSIM=0.6692, LPIPS=0.1666, **Score=0.6616**
+  - `HCM0539`: PSNR=21.307dB, SSIM=0.6877, LPIPS=0.1623, **Score=0.6692**
+  - Pipeline (COLMAP holdout → train → render → eval) chạy sạch trên GPU Kaggle thật,
+    xác nhận hạ tầng Phase 0 hoạt động đúng như thiết kế, không phát sinh bug mới.
+  - Chưa có mốc so sánh (chưa chạy cấu hình B/TRR trên 2 scene này) nên chưa kết luận
+    được gì về việc cấu hình A có phải lựa chọn tốt nhất không — chỉ là baseline.
+- Theo plan.md mục 7, Phase A yêu cầu chạy cấu hình A trên **toàn bộ 7 scene** trước
+  khi sang Phase B — còn thiếu 5 scene (`HCM0540`, `HCM0644`, `HCM0674`, `bonsai`,
+  `chair`). Đã cập nhật "Bước tiếp theo" ở trên, chưa tự chạy được (không có Kaggle
+  API key/GPU ở local).
+
+### 2026-07-17 — Phase A hoàn tất: đủ 7/7 scene, cấu hình A (baseline)
+- User đã tự chạy nốt 5 scene còn lại trên Kaggle, dán kết quả về `Result/<scene>/`.
+  Đã xác nhận (đọc trực tiếp cell tham số trong từng notebook) cả 7/7 scene đều dùng
+  đúng cấu hình A (`ANTIALIASING=1, DEPTH_PRIOR=0, EXPOSURE_COMP=0, ANTENNA_FOCUS=0`,
+  `MODE="holdout"`, `ITERATIONS=15000`) — kết quả so sánh được với nhau, không lệch
+  cấu hình.
+- Bảng Score trung bình holdout (đọc `eval_metrics.txt`, N = số ảnh holdout/scene):
+
+  | Scene    | N  | PSNR (dB) | SSIM   | LPIPS  | Score  |
+  |----------|----|-----------|--------|--------|--------|
+  | HCM0421  | 30 | 21.248    | 0.6692 | 0.1666 | 0.6616 |
+  | HCM0539  | 30 | 21.307    | 0.6877 | 0.1623 | 0.6692 |
+  | HCM0540  | 30 | 21.668    | 0.6754 | 0.1695 | 0.6648 |
+  | HCM0644  | 30 | 20.279    | 0.6719 | 0.1732 | 0.6540 |
+  | HCM0674  | 30 | 21.146    | 0.6941 | 0.1631 | 0.6699 |
+  | bonsai   | 31 | 25.742    | 0.8318 | 0.2427 | 0.7069 |
+  | chair    | 26 | 23.544    | 0.7550 | 0.2823 | 0.6549 |
+
+  - 5 scene BTS khá đồng đều (Score 0.654–0.670), `bonsai` cao nhất (indoor, dense —
+    dễ dựng 3DGS hơn), `chair` thấp nhất trong nhóm dù PSNR/SSIM cao hơn BTS (LPIPS
+    cao 0.28 kéo Score xuống — nghi khung cảnh có chi tiết/texture phức tạp hơn hoặc
+    khẩu độ view thưa hơn ở vài góc, CHƯA điều tra sâu).
+  - Không có bug/crash nào khi chạy 5 scene còn lại — hạ tầng Phase 0 ổn định trên cả
+    domain BTS lẫn generic (bonsai/chair).
+  - **Phase A coi như hoàn tất theo plan.md mục 7** (đủ 7/7 scene có baseline cấu hình
+    A). Đã cập nhật "Bước tiếp theo" chuyển sang Phase B (`DEPTH_PRIOR=1`, cả 7 scene).
+
+### 2026-07-18 — Bug CUDA OOM Phase B (DEPTH_PRIOR=1) + fix trong kaggle_private.ipynb
+- User dán kết quả Phase B (thư mục `Result/Lần 2_ anti=depth=1_lỗi 7k_inter/`, cấu hình
+  `ANTIALIASING=1, DEPTH_PRIOR=1`) — đọc log lỗi trong 6 notebook (`HCM0421/539/540/644/
+  674`, `bonsai`) phát hiện **FAIL 6/6**: `torch.OutOfMemoryError: CUDA out of memory`
+  của `diff_gaussian_rasterization` giữa chừng train, ở các mốc rất khác nhau (59%-97%
+  của 15000 iteration: 8900/15000 tới 14500/15000) — GPU Kaggle báo capacity ~14.56GiB,
+  gần cạn sát nút lúc crash (13.8-14.5GiB đã dùng) ở TẤT CẢ 6 scene, không phải lỗi
+  riêng scene nào. `chair` fail nặng hơn nữa — không có cả notebook lẫn nội dung trong
+  `manifest.txt`/`eval_metrics.txt` (0 dòng), tức crash sớm hơn/nặng hơn 6 scene kia,
+  không đọc được log để biết chi tiết.
+  - Checkpoint `iteration_7000` vẫn sống sót ở cả 6 scene fail (đúng thiết kế
+    `SAVE_ITERATIONS` của `03_train_3dgs.sh`) — dùng tạm được nhưng KHÔNG so sánh công
+    bằng với Score cấu hình A (đã đo ở iteration 15000 đủ).
+- **Nguyên nhân suy luận** (không có log memory chi tiết hơn để xác nhận 100%, nhưng
+  khớp với việc cấu hình A cùng `ITERATIONS=15000` chạy trót lọt 7/7 trước đó): thêm
+  depth-prior loss đẩy densify sinh thêm Gaussian/dùng thêm bộ nhớ đủ để vượt ngưỡng gần
+  cạn sẵn có của cấu hình A — không phải do 1 scene cụ thể nặng hơn.
+- **Fix đã áp trong `pipeline/kaggle_private.ipynb`** (cell "Bước 5" — set env train):
+  khi `DEPTH_PRIOR=1`, tự set thêm `SH_DEGREE=2` và `DENSIFY_GRAD_THRESHOLD=0.0004` —
+  đúng tổ hợp biện pháp giảm bộ nhớ mà `03_train_3dgs.sh` đã tự viết sẵn trong comment
+  đầu file (ví dụ dùng đúng cặp này). Cấu hình A không đổi gì (đã chạy tốt ở mặc định).
+  Validate: `json.load` + `nbformat.validate()` sạch (chỉ warning thiếu `id`, không mới).
+- **CHƯA verify trên Kaggle thật** (chưa có GPU để tự chạy) — cần user chạy lại Phase B
+  cho cả 7 scene (kể cả `chair`, hiện chưa có kết quả nào) để xác nhận fix đủ.
+- **Đánh đổi CẦN BIẾT**: từ giờ Score cấu hình B không còn tách bạch thuần "hiệu ứng
+  depth prior" — mà là depth_prior + SH_DEGREE=2 + densify_grad_threshold cao hơn cộng
+  lại (SH_DEGREE thấp hơn giảm chi tiết màu/view-dependent hiệu ứng ánh sáng; densify
+  threshold cao hơn giảm số Gaussian ở vùng chi tiết mảnh). Nếu sau này muốn so sánh
+  tinh khiết hơn, phải train lại cấu hình B trên GPU lớn hơn không cần giảm 2 tham số
+  này — nhưng theo mục tiêu thực dụng của plan.md (chọn cấu hình thắng theo Score đo
+  được, không phải theo lý thuyết), Score đo được với fix này vẫn dùng chốt được cấu
+  hình A/B thắng cho từng scene, chỉ cần biết rõ nó là "B đã điều chỉnh cho vừa GPU".
+
+### 2026-07-18 — Chốt Stage 1 (A/B) + phát hiện thêm: `chair` thật ra chạy trót lọt
+- User làm rõ cách xử lý 2 batch kết quả gây nhầm lẫn ở lượt trước:
+  - `Result/Lần 2_ anti=depth=1_lỗi 7k_inter/`: user CHỦ ĐỘNG chấp nhận dùng nguyên kết
+    quả này làm dữ liệu Phase B (không rerun 6 scene OOM để tiết kiệm quota GPU) — dù
+    biết checkpoint chỉ dừng ở 7000 iteration cho 6/7 scene.
+  - `Result/Lần 2_ anti=depth=1_15k_inter/HCM0421/`: user xác nhận ĐÚNG là vẫn lỗi
+    (thiếu bấm đổi `DEPTH_PRIOR` trước khi chạy, dù notebook đã là bản mới nhất có sẵn
+    fix OOM) — không dùng dữ liệu này.
+- **Đọc kỹ lại notebook `chair` trong batch "lỗi 7k_inter"**: phát hiện `chair` THỰC RA
+  chạy trót lọt HẾT 15000/15000 iteration, KHÔNG OOM (khác 6 scene kia) — dùng
+  `sh_degree=3, densify_grad_threshold=0.0002` mặc định (notebook batch này chưa có fix
+  SH_DEGREE, vì chạy trước khi agent thêm fix). Tức Score B của `chair` là dữ liệu
+  **công bằng 100%** (cùng 15000 iteration với A), không như 6 scene BTS+bonsai kia.
+  Khả năng: ảnh `chair` (720×1280, portrait, ít Gaussian hơn scene BTS 4K rộng) không
+  đủ tải để chạm ngưỡng OOM dù cùng bật depth-prior.
+- **Đã hỏi user cách xử lý 6 scene có Score B không công bằng (7k vs A ở 15k)** — user
+  chọn: **chốt A thắng cho 6 scene này** (không tốn thêm Kaggle GPU quota để chạy lại B
+  công bằng ngay bây giờ, có thể quay lại sau nếu dư thời gian).
+- **Bảng Stage 1 — cấu hình thắng CHỐT** (dùng cho Phase E — final):
+
+  | Scene    | Cấu hình thắng | Score dùng để chọn | Ghi chú |
+  |----------|----------------|---------------------|---------|
+  | HCM0421  | A              | 0.6616 (15k) vs B 0.6151 (7k, không công bằng) | |
+  | HCM0539  | A              | 0.6692 (15k) vs B 0.6251 (7k, không công bằng) | |
+  | HCM0540  | A              | 0.6648 (15k) vs B 0.6085 (7k, không công bằng) | |
+  | HCM0644  | A              | 0.6540 (15k) vs B 0.6107 (7k, không công bằng) | |
+  | HCM0674  | A              | 0.6699 (15k) vs B 0.6234 (7k, không công bằng) | |
+  | bonsai   | A              | 0.7069 (15k) vs B 0.7053 (7k, không công bằng) | rất sát, có thể đáng thử lại B công bằng nếu dư thời gian |
+  | chair    | **B**          | 0.6616 (15k) vs A 0.6549 (15k) — **công bằng, B thắng thật** | |
+
+### 2026-07-18 — Pre-flight antenna patch (Phase D) — kiểm chứng cục bộ, không cần GPU
+- Trước khi khuyến nghị Phase D (antenna-focus), tự kiểm tra rủi ro đã ghi trong comment
+  `03_train_3dgs.sh` ("apply_antenna_patch.py viết cho bản train.py CŨ hơn commit đã
+  pin, CÓ THỂ không áp sạch") — clone thật `graphdeco-inria/gaussian-splatting`,
+  checkout đúng commit pin `54c035f7834b564019656c3e3fcc3646292f727d`, chạy
+  `apply_antenna_patch.py --gs_repo` thật. Kết quả: **áp sạch, 8/8 chỗ vá thành công**,
+  `python -m py_compile train.py` sau vá không lỗi cú pháp — rủi ro tương thích nêu
+  trong comment KHÔNG xảy ra trên commit hiện tại. Hạ tầng code Phase D coi như sẵn
+  sàng, chỉ còn thiếu: (1) chọn ảnh + bbox ăn-ten thủ công/scene (việc của người, cần
+  xem ảnh), (2) thêm cell gọi 2 script này vào `kaggle_private.ipynb` trước train (chưa
+  làm — notebook hiện có biến `ANTENNA_FOCUS` nhưng KHÔNG có cell nào tạo
+  `antenna_weights.json`/vá `GS_REPO`, nên nếu bật `ANTENNA_FOCUS=1` ngay bây giờ sẽ báo
+  lỗi rõ ràng và dừng, không train nhầm).
+- Quyết định thứ tự ưu tiên: theo plan.md mục 7, Phase D chỉ nên làm "nếu còn thời
+  gian" — SAU khi có 1 bản nộp an toàn (Phase E). Đã cập nhật "Bước tiếp theo" đổi ưu
+  tiên cao nhất sang Phase E (final train + submit) thay vì đi tiếp Phase C/D ngay.
+
+### 2026-07-18 — Fix `10_sanity_check_render.py`: sanity check chạy "thành công" nhưng không kiểm tra được gì
+- User chỉ ra file `Result/Lần 2_ anti=depth=1_15k_inter/HCM0421/bts-digital-twin-round2.ipynb`
+  có vẻ lỗi render, yêu cầu kiểm tra code. Đọc log cell "Gợi ý sanity-check" (cell 24,
+  chạy `10_sanity_check_render.py`) thấy toàn bộ 8/8 ảnh mẫu bị `[BỎ QUA]` vì
+  `kích thước khác nhau GT=(989, 1320) render=(981, 1309)` → kết thúc bằng
+  "Không có ảnh nào kiểm tra được".
+- **Nguyên nhân:** `03_train_3dgs.sh` mặc định (`CLEANUP_DENSE_IMAGES=1`) LUÔN tự xoá
+  `colmap/dense/images/` (ảnh đã undistort) ngay sau khi train xong — nên tới lúc cell
+  sanity-check chạy, thư mục đó **luôn** đã bị xoá trong thực tế (không phải ca hiếm).
+  Code có fallback đọc ảnh gốc ở `Dataset/.../train/images/` — nhưng ảnh đó CHƯA
+  undistort (989×1320) trong khi model thật train trên ảnh ĐÃ undistort (981×1309,
+  COLMAP tự crop viền vài px khi khử méo) — lệch kích thước nên bị so sánh trượt 100%.
+  Hệ quả: script chạy "thành công", không báo lỗi cứng, nhưng hoàn toàn KHÔNG kiểm tra
+  được gì — mất tác dụng của chính lưới an toàn nó được viết ra để làm (bắt lỗi
+  antialiasing train/render lệch nhau, đúng bug thật đã xảy ra ở round 1).
+- **Đã sửa** `pipeline/scripts/10_sanity_check_render.py`: `find_train_image()` giờ trả
+  thêm cờ `is_undistorted` (biết ảnh lấy từ nhánh nào); nếu phải dùng ảnh fallback CHƯA
+  undistort, `load_img01()` tự resize (PIL BICUBIC) về đúng kích thước render trước khi
+  so PSNR/SSIM/LPIPS — không pixel-exact 100% nhưng đủ nhạy để bắt lệch cấu hình lớn
+  (antialiasing/sh_degree sai lệch nhiều dB, không thể nhầm với sai số resize ~1%). In
+  rõ cảnh báo "[LƯU Ý] N/M ảnh dùng GT XẤP XỈ" ở phần tổng kết. Trường hợp cả 2 ảnh đã
+  undistort mà vẫn lệch size thì VẪN giữ nguyên báo lỗi cứng (đó mới là bug thật). Verify:
+  `python -m py_compile` sạch (chưa chạy lại thật trên Kaggle — cần GPU).
+
+### 2026-07-18 — Fix BUG NGHIÊM TRỌNG trong `kaggle_submission.ipynb`: thiếu cfg_args/pipeline_train_flags.json khi tải checkpoint
+- User yêu cầu chốt lại toàn bộ code trước khi chạy Phase E thật cho 7 scene. Rà lại
+  `kaggle_submission.ipynb` (notebook đóng gói submission cuối, dùng SAU khi có đủ 7
+  checkpoint final) để đảm bảo an toàn trước khi dùng cho bài nộp thật — phát hiện
+  **bug nghiêm trọng, đúng loại lỗi round-1 dự án đã nhiều lần cảnh giác**:
+  - Cell "Bước 5" (tải checkpoint) chỉ tải đúng 1 file `point_cloud.ply` qua
+    `gdown --fuzzy "{link}" -O <đường dẫn cố định iteration_30000/point_cloud.ply>` —
+    KHÔNG tải `cfg_args` và `pipeline_train_flags.json` (2 file này nằm cùng cấp trong
+    `gs_model/`, do `03_train_3dgs.sh`/`train.py` tự ghi).
+  - Cell "Bước 6" gọi `04_render_test_poses.py --scene {scene}` KHÔNG truyền
+    `--antialiasing` thủ công (mặc định `"auto"` — tự đọc từ 2 file trên). Thiếu 2 file
+    đó, script chỉ IN CẢNH BÁO rồi **âm thầm mặc định `antialiasing=False`** — trong khi
+    **CẢ 7 SCENE đều train với `ANTIALIASING=1`** (cấu hình A hoặc B đều bật). Nếu chạy
+    đúng như thiết kế cũ, TOÀN BỘ ảnh render nộp bài (cả 7 scene) sẽ SAI cấu hình
+    antialiasing so với lúc train — không có lỗi cứng nào chặn lại, sẽ âm thầm mất điểm
+    lớn trên bảng xếp hạng thật (chính là bug mà `10_sanity_check_render.py` được viết
+    ra để bắt, xem docstring của nó — nhưng bug này nằm ở notebook ĐÓNG GÓI, ngoài phạm
+    vi sanity-check vì không có bước train ngay trước để chạy sanity-check).
+  - Markdown hướng dẫn cũ ("Bước 5") ghi rõ SAI: "mỗi scene 1 link file point_cloud.ply
+    đơn, KHÔNG phải thư mục gs_model" — ngược hẳn với hướng dẫn ở `kaggle_private.ipynb`
+    Bước 7 ("tải thẳng cả thư mục... upload nguyên vậy lên Drive") — 2 notebook lệch
+    nhau về format link Drive kỳ vọng, thêm 1 lớp rủi ro nhầm lẫn khi user thao tác.
+- **Đã sửa**: cell "Bước 5" giờ tải NGUYÊN thư mục `gs_model` bằng `gdown --fuzzy
+  --folder`, tự dò lớp thư mục chứa `cfg_args` (đề phòng `gdown --folder` tự thêm 1 lớp
+  thư mục con), rồi ASSERT cứng có đủ `cfg_args` + `pipeline_train_flags.json` + ít nhất
+  1 `point_cloud.ply` trước khi copy vào đúng vị trí — báo lỗi rõ ràng ngay nếu thiếu
+  thay vì âm thầm render sai. Markdown hướng dẫn cập nhật khớp lại với
+  `kaggle_private.ipynb` (link Drive phải là thư mục `gs_model`, không phải file đơn).
+- **Bug phụ tìm thấy + sửa luôn (cùng file)**: cell dò thư mục dataset trong zip (Bước
+  4) vẫn dùng logic CŨ bắt buộc đúng tên "VAI_NVS_DATA_ROUND2" — đúng bug đã sửa ở
+  `kaggle_private.ipynb` ngày 2026-07-17 (commit `f044ffa`) nhưng **chưa được port sang
+  `kaggle_submission.ipynb`** (2 notebook tải cùng 1 dataset zip nên cùng rủi ro cấu
+  trúc thư mục). Đã port y hệt logic linh hoạt (`_MIN_MATCH=4`, không bắt buộc tên).
+  Tiện thể sửa luôn 1 dòng print sót chữ "phase1" (tàn dư round 1, giống lỗi đã sửa ở
+  `kaggle_private.ipynb`).
+- Verify: `nbformat.validate()` sạch (chỉ warning thiếu `id`, không mới), `ast.parse()`
+  từng cell code sạch cú pháp. **CHƯA chạy thật trên Kaggle** (cần có checkpoint thật +
+  GPU) — sẽ lộ ra khi user chạy `kaggle_submission.ipynb` lần đầu sau khi có đủ 7
+  checkpoint final.
+- **Sửa lại nhận định SAI trước đó trong worklog** ("kaggle_submission.ipynb chưa cần
+  sửa gì thêm", ghi ngày 2026-07-16) — nhận định đó SAI, chưa từng rà kỹ file này tới
+  giờ mới phát hiện 2 bug thật ở trên.

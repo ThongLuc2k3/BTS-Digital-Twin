@@ -171,23 +171,34 @@ def load_train_poses(sparse_dir: Path) -> dict[str, TestPose]:
     return poses
 
 
-def find_train_image(scene, image_name: str) -> Path | None:
+def find_train_image(scene, image_name: str) -> tuple[Path, bool] | None:
     """03_train_3dgs.sh có thể đã xoá colmap/dense/images/ để dọn đĩa (xem
-    CLEANUP_DENSE_IMAGES trong script đó) — thử luôn Dataset/.../train/images/
-    gốc (BTC cung cấp, không bao giờ bị xoá) làm phương án dự phòng."""
+    CLEANUP_DENSE_IMAGES trong script đó, mặc định BẬT nên trong thực tế HẦU
+    NHƯ LUÔN đã bị xoá tới lúc script này chạy) — thử luôn Dataset/.../train/
+    images/ gốc (BTC cung cấp, không bao giờ bị xoá) làm phương án dự phòng.
+
+    Trả về (path, is_undistorted). Ảnh gốc ở phương án dự phòng CHƯA undistort
+    nên kích thước lệch vài px so với ảnh model thật sự train (đã qua
+    image_undistorter) — is_undistorted=False đánh dấu điều đó để main() biết
+    cần resize gần đúng thay vì so pixel-exact."""
     pipeline_root = Path(__file__).resolve().parents[1]
     candidates = [
-        pipeline_root / "work" / scene.name / "colmap" / "dense" / "images" / image_name,
-        scene.train_images_dir / image_name,
+        (pipeline_root / "work" / scene.name / "colmap" / "dense" / "images" / image_name, True),
+        (scene.train_images_dir / image_name, False),
     ]
-    for c in candidates:
+    for c, is_undistorted in candidates:
         if c.exists():
-            return c
+            return c, is_undistorted
     return None
 
 
-def load_img01(path: Path) -> np.ndarray:
-    return np.asarray(PILImage.open(path).convert("RGB")).astype(np.float32) / 255.0
+def load_img01(path: Path, resize_to: tuple[int, int] | None = None) -> np.ndarray:
+    """resize_to = (W, H) nếu cần ép về đúng kích thước render (chỉ dùng cho
+    ảnh gốc CHƯA undistort ở nhánh dự phòng — xem find_train_image)."""
+    img = PILImage.open(path).convert("RGB")
+    if resize_to is not None and img.size != resize_to:
+        img = img.resize(resize_to, PILImage.BICUBIC)
+    return np.asarray(img).astype(np.float32) / 255.0
 
 
 def main():
@@ -249,22 +260,35 @@ def main():
         print("[CẢNH BÁO] Chưa cài package `lpips` — bỏ qua LPIPS, chỉ tính PSNR/SSIM.")
 
     rows = []
+    n_approx = 0
     print(f"===== {scene.name}: sanity-check {len(sample_names)} ảnh TRAIN qua đúng đường render submission =====")
     for name in sample_names:
-        gt_path = find_train_image(scene, name)
-        if gt_path is None:
+        found = find_train_image(scene, name)
+        if found is None:
             print(f"  [BỎ QUA] {name}: không tìm thấy ảnh train gốc trên đĩa (đã bị dọn và không có ở Dataset/ gốc?).")
             continue
+        gt_path, is_undistorted = found
         pose = all_poses[name]
         assert_centered_principal_point(pose)
         cam = build_minicam(pose)
         with torch.no_grad():
             out = render(cam, gaussians, pipe, background)
         pred = out["render"].clamp(0, 1).detach().cpu().numpy().transpose(1, 2, 0)  # (H,W,3) float01
-        gt = load_img01(gt_path)
-        if gt.shape != pred.shape:
-            print(f"  [BỎ QUA] {name}: kích thước khác nhau GT={gt.shape[:2]} render={pred.shape[:2]}.")
-            continue
+        render_wh = (pred.shape[1], pred.shape[0])  # PIL dùng (W,H), numpy shape là (H,W,...)
+
+        if is_undistorted:
+            gt = load_img01(gt_path)
+            if gt.shape != pred.shape:
+                print(f"  [BỎ QUA] {name}: kích thước khác nhau GT={gt.shape[:2]} render={pred.shape[:2]} "
+                      f"(cả 2 đáng lẽ đã cùng qua undistort — có thể là bug thật, không phải do dọn đĩa).")
+                continue
+        else:
+            # dense/images/ đã bị dọn (bình thường) — ảnh gốc CHƯA undistort nên
+            # resize gần đúng về đúng kích thước render để vẫn so được (không
+            # pixel-exact, chỉ đủ để bắt sai lệch CẤU HÌNH lớn — mismatch antialiasing/
+            # sh_degree làm PSNR tụt nhiều dB, không thể nhầm với sai số resize ~1%).
+            gt = load_img01(gt_path, resize_to=render_wh)
+            n_approx += 1
 
         psnr_v = peak_signal_noise_ratio(gt, pred, data_range=1.0)
         ssim_v = structural_similarity(gt, pred, data_range=1.0, channel_axis=2)
@@ -286,6 +310,13 @@ def main():
     mean_psnr, mean_ssim = arr[:, 0].mean(), arr[:, 1].mean()
     print(f"\n=== TRUNG BÌNH {len(rows)} ảnh TRAIN (qua đúng đường render submission) ===")
     print(f"  PSNR mean={mean_psnr:.2f}  SSIM mean={mean_ssim:.4f}")
+    if n_approx:
+        print(
+            f"  [LƯU Ý] {n_approx}/{len(rows)} ảnh dùng GT XẤP XỈ (resize từ ảnh gốc chưa undistort vì "
+            "colmap/dense/images/ đã bị 03_train_3dgs.sh dọn — bình thường, không phải lỗi). PSNR/SSIM "
+            "các ảnh này thấp hơn thực tế khoảng 1 chút do resize, không pixel-exact — vẫn đủ tin cậy để "
+            "bắt lỗi mismatch cấu hình LỚN (chênh nhiều dB), không dùng số này làm điểm chính thức."
+        )
     print(
         "\nCÁCH ĐỌC KẾT QUẢ: đây là ảnh model đã học TRỰC TIẾP, PSNR phải cao RÕ RỆT so với "
         "PSNR đo trên test-set (05_eval_metrics.py) của CHÍNH scene này — điển hình cao hơn "

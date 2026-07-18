@@ -744,3 +744,69 @@ COLMAP) rồi đóng gói lại, nộp bản #2.
   chờ. Chuyển hẳn sang Phase E (train final + đóng gói nộp bài) theo đúng bảng cấu
   hình đã chốt, xem "CHỐT — checklist chạy Phase E" ở trên (không đổi gì so với bảng
   đó — vẫn A cho 6 scene, B cho `chair`).
+
+### 2026-07-18 — User đổi ý: tạm hoãn Phase E, xây thử ý tưởng "error-guided refine"
+- User yêu cầu tạm bỏ qua bản nộp, thay vào đó triển khai ý tưởng đã bàn trước đó:
+  dùng 1 checkpoint đã có (từ Drive) + ảnh train thật để tự tìm vùng pixel còn lỗi cao
+  rồi train tiếp 1 đợt ngắn ưu tiên loss vào đúng vùng đó ("error-guided refine").
+- **Thiết kế kỹ thuật** — đối chiếu trực tiếp source thật `gaussian-splatting` (commit
+  đã pin) trước khi code, không suy đoán:
+  - `Scene(dataset, gaussians, load_iteration=N)` là cơ chế CHÍNH THỨC có sẵn của repo
+    (bình thường chỉ dùng cho render/inference) — load thẳng `.ply`, KHÔNG cần `.pth`
+    optimizer state (khác `--start_checkpoint`) — đúng nhu cầu vì checkpoint thường có
+    từ `03_train_3dgs.sh` chỉ có `.ply`.
+  - **Cạm bẫy tự phát hiện + tự vá**: đi qua nhánh `load_iteration` này thì
+    `create_from_pcd()` (nơi DUY NHẤT set `spatial_lr_scale`) KHÔNG được gọi —
+    `spatial_lr_scale` giữ nguyên `0` mặc định. Vì learning rate vị trí Gaussian =
+    `position_lr_init * spatial_lr_scale`, nếu không tự sửa, Gaussian sẽ ĐỨNG YÊN
+    100% suốt đợt tinh chỉnh (không train gì cả) mà KHÔNG báo lỗi gì. Đã tự vá: gán
+    lại `gaussians.spatial_lr_scale = scene.cameras_extent` — đúng giá trị
+    `Scene.__init__` tự tính cho nhánh train-from-scratch bình thường.
+  - Cơ chế mask trọng số loss tái dùng Y HỆT công thức đã có ở antenna-focus
+    (`Ll1 = (weight * |image-gt|).sum() / weight.expand_as(image).sum()`) — chỉ khác
+    nguồn: antenna dùng 1 khung cố định do người chọn, cái này dùng mask theo TỪNG
+    PIXEL đo tự động từ lỗi thật.
+- **File mới**:
+  - `pipeline/scripts/apply_error_refine_patch.py` — vá `train.py` (6 chỗ): thêm
+    `--refine_from_iteration`/`--error_mask_dir`, fix `spatial_lr_scale`, hàm
+    `_error_mask()` đọc mask 16-bit PNG. KHÔNG dùng chung được với antenna patch (đụng
+    cùng điểm vá "Loss") — tự chặn nếu phát hiện file đã vá antenna-focus.
+  - `pipeline/scripts/12_generate_error_mask.py` — render lại pose TRAIN (tái dùng
+    machinery đã proven của `10_sanity_check_render.py`: `build_minicam`,
+    `load_train_poses`, đọc `cfg_args`/`pipeline_train_flags.json`), so GT thật, tính
+    `err = mean(|render-GT|)` theo pixel, Gaussian-blur làm mượt (mặc định radius=4px,
+    tránh mask vụn theo từng pixel lẻ), rồi map sang weight theo percentile:
+    `weight = 1 + (MAX_WEIGHT-1) * clip((err-p50)/(p95-p50), 0, 1)` — vùng lỗi trung
+    vị trở xuống không đổi (weight=1), top 5% lỗi được boost tới MAX_WEIGHT (mặc định
+    6x). Lưu 16-bit PNG (`pixel = round(weight * 1000)`).
+  - `pipeline/kaggle_error_refine.ipynb` — notebook Kaggle RIÊNG (không đụng
+    `kaggle_private.ipynb` đang dùng cho Phase E): tải checkpoint có sẵn từ Drive (tái
+    dùng logic tải+validate `gs_model/` đã kiểm chứng ở `kaggle_submission.ipynb`) →
+    tái tạo `dense/images/` (COLMAP, đã bị dọn đĩa sau train gốc) → đo Score holdout
+    TRƯỚC → sinh error mask → vá + train tiếp → đo Score holdout SAU → tự so sánh,
+    in rõ kết luận "CÓ CẢI THIỆN" hay "KHÔNG cải thiện — giữ checkpoint gốc".
+- **Verify cục bộ đã làm** (không có GPU, không thể test render/train thật):
+  - Patch áp sạch 6/6 chỗ lên bản clone GS_REPO SẠCH thật + `python -m py_compile`
+    sau vá không lỗi cú pháp.
+  - Công thức weight verify bằng dữ liệu tổng hợp (vùng lỗi giả lập ra đúng weight≈6,
+    vùng nền ra đúng weight≈1).
+  - Round-trip lưu 16-bit PNG bằng `cv2.imwrite` (dùng ở script sinh mask) rồi đọc lại
+    bằng `PIL.Image.open` (dùng ở patch train.py) — verify 2 thư viện tương thích
+    nhau, không lệch giá trị (2 script khác nhau, cần chắc chắn đọc/ghi khớp).
+  - `load_train_poses()` verify bằng sparse COLMAP thật của `HCM0421` (240 pose đọc
+    đúng, camera size khớp 1309×981).
+  - Notebook: `nbformat.validate()` sạch. Rà riêng các dòng `!lệnh {biểu_thức}` có
+    biểu thức PHỨC TẠP hơn 1 biến đơn (dấu ngoặc/toán tử) — tìm thấy 2 chỗ rủi ro
+    (`!{" ".join(cmd)}` nguyên dòng, và `{"on" if X else "off"}` lồng trong dòng `!`)
+    CHƯA từng dùng ở notebook nào khác trong dự án — đã sửa lại thành tính trước ra
+    biến đơn giản rồi mới nội suy, khớp đúng pattern đã proven chạy thật (`{biến}`
+    đơn, kể cả biểu thức truy cập như `{os.environ['GS_REPO']}` — pattern này ĐÃ chạy
+    thật thành công ở Test3).
+- **CHƯA test trên GPU thật** — đây là tính năng hoàn toàn mới (không port từ nhánh cũ
+  nào, không có tiền lệ), cần 1 lần chạy Kaggle thật để biết: (1) patch + resume có
+  chạy đúng như thiết kế không, (2) đợt tinh chỉnh có THỰC SỰ tăng Score không (giả
+  định "lỗi trên train cũng là lỗi tương tự ở holdout/test" CHƯA có bằng chứng thực
+  nghiệm — notebook tự đo trước/sau để trả lời câu hỏi này trực tiếp bằng số liệu
+  thật, không suy đoán).
+- **Cần từ user để chạy**: 1 link Drive tới thư mục `gs_model` của 1 checkpoint đã có
+  (train ở `MODE="holdout"`, `ANTENNA_FOCUS=0` — 2 điều kiện bắt buộc, xem notebook).

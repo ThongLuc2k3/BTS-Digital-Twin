@@ -33,11 +33,26 @@ fi
 SCENE="$1"
 PREPARED_SOURCE_DIR="$PIPELINE_DIR/work/$SCENE/colmap/dense"
 RAW_SOURCE_DIR="$DATASET_ROOT/$SCENE/train"
-if [[ -d "$PREPARED_SOURCE_DIR/images" && -d "$PREPARED_SOURCE_DIR/sparse/0" ]]; then
-  SOURCE_DIR="$PREPARED_SOURCE_DIR"
-else
-  SOURCE_DIR="$RAW_SOURCE_DIR"
-fi
+SOURCE_MODE="${SOURCE_MODE:-auto}"
+case "$SOURCE_MODE" in
+  auto)
+    if [[ -d "$PREPARED_SOURCE_DIR/images" && -d "$PREPARED_SOURCE_DIR/sparse/0" ]]; then
+      SOURCE_DIR="$PREPARED_SOURCE_DIR"
+    else
+      SOURCE_DIR="$RAW_SOURCE_DIR"
+    fi
+    ;;
+  prepared)
+    SOURCE_DIR="$PREPARED_SOURCE_DIR"
+    ;;
+  raw)
+    SOURCE_DIR="$RAW_SOURCE_DIR"
+    ;;
+  *)
+    echo "Lỗi: SOURCE_MODE phải là auto, prepared, hoặc raw. Hiện tại: $SOURCE_MODE" >&2
+    exit 1
+    ;;
+esac
 MODEL_DIR="$PIPELINE_DIR/work/$SCENE/gs_model"
 LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
 
@@ -79,6 +94,8 @@ if [[ "$SAVE_FINAL_CHECKPOINT" == "1" ]]; then
 fi
 
 echo "===== Train 3DGS: scene=$SCENE iterations=$ITERATIONS antialiasing=$ANTIALIASING exposure=$EXPOSURE_COMP ====="
+echo "SOURCE_MODE=$SOURCE_MODE"
+echo "SOURCE_DIR=$SOURCE_DIR"
 if [[ -n "$START_CHECKPOINT" ]]; then
   echo "Resume từ: $START_CHECKPOINT"
 fi

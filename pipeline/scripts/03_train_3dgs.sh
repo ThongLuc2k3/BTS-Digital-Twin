@@ -31,7 +31,13 @@ if [[ $# -ne 1 ]]; then
 fi
 
 SCENE="$1"
-SOURCE_DIR="$DATASET_ROOT/$SCENE/train"
+PREPARED_SOURCE_DIR="$PIPELINE_DIR/work/$SCENE/colmap/dense"
+RAW_SOURCE_DIR="$DATASET_ROOT/$SCENE/train"
+if [[ -d "$PREPARED_SOURCE_DIR/images" && -d "$PREPARED_SOURCE_DIR/sparse/0" ]]; then
+  SOURCE_DIR="$PREPARED_SOURCE_DIR"
+else
+  SOURCE_DIR="$RAW_SOURCE_DIR"
+fi
 MODEL_DIR="$PIPELINE_DIR/work/$SCENE/gs_model"
 LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
 

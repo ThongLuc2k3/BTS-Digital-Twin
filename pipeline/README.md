@@ -1,29 +1,21 @@
 # Pipeline Mới
 
-Pipeline này chỉ giữ 1 workflow:
+Pipeline này chỉ giữ 1 workflow cho `round1 public_set`:
 
-1. train từ đầu
-2. lưu checkpoint `.pth`
-3. resume lên iteration cao hơn
+1. train `30000`
+2. lấy `gs_model`
+3. resume từ link Google Drive của `gs_model`
+4. so sánh model cũ và model mới
 
 ## File chính
 
-- [kaggle_train_resume.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_train_resume.ipynb)
-- [kaggle_round1_public_resume.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_round1_public_resume.ipynb)
+- [kaggle_round1_train_30k.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_round1_train_30k.ipynb)
+- [kaggle_round1_resume_from_drive.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_round1_resume_from_drive.ipynb)
 - [scripts/03_train_3dgs.sh](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/03_train_3dgs.sh)
 - [scripts/render_round1_test_poses.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/render_round1_test_poses.py)
 - [scripts/eval_round1_metrics.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/eval_round1_metrics.py)
 
 ## Dataset giả định
-
-Script train mới dùng trực tiếp dataset đang có cấu trúc:
-
-```text
-Dataset/VAI_NVS_DATA_ROUND2/<SCENE>/train/images
-Dataset/VAI_NVS_DATA_ROUND2/<SCENE>/train/sparse/0
-```
-
-Không còn phụ thuộc các script cũ như holdout, depth, antenna, refine.
 
 Round1 public_set dùng:
 
@@ -37,7 +29,7 @@ Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/test/test_poses.csv
 ## Biến môi trường quan trọng
 
 - `GS_REPO`: đường dẫn repo `gaussian-splatting`
-- `DATASET_ROOT`: gốc dataset, mặc định `Dataset/VAI_NVS_DATA_ROUND2`
+- `DATASET_ROOT`: gốc dataset, trỏ tới `Dataset/VAI_NVS_DATA/phase1/public_set`
 - `ITERATIONS`: iteration đích
 - `START_CHECKPOINT`: file `.pth` để resume
 - `SAVE_FINAL_CHECKPOINT=1`: lưu `chkpnt<ITERATIONS>.pth`
@@ -46,5 +38,5 @@ Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/test/test_poses.csv
 
 ## Gợi ý mặc định
 
-- chạy đầu: `ITERATIONS=30000`, `SAVE_FINAL_CHECKPOINT=1`
-- chạy sau: `START_CHECKPOINT=.../chkpnt30000.pth`, `ITERATIONS=60000`
+- notebook 1: train `30000`
+- notebook 2: resume từ `chkpnt*.pth` lớn nhất có trong `gs_model`

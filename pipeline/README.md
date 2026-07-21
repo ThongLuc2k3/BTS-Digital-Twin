@@ -1,125 +1,50 @@
-# Pipeline — BTS Digital Twin (NVS) Vòng 1
+# Pipeline Mới
 
-Code thực thi cho kế hoạch ở `../Hướng đi.md`. Toàn bộ script đã được viết
-dựa trên việc đối chiếu trực tiếp source thật của COLMAP (`colmap/colmap`, nhánh
-`main`, thư mục `src/pycolmap/`) và của `graphdeco-inria/gaussian-splatting`
-(fetch trực tiếp từ GitHub, không đoán từ trí nhớ) — xem chú thích đầu mỗi file.
+Pipeline này chỉ giữ 1 workflow:
 
-**Chưa chạy được trên máy hiện tại**: máy này không có `colmap`/`pycolmap`/`torch`
-cài sẵn, và GPU local (GTX 1650 4GB) không đủ để train 3DGS. Toàn bộ script dưới
-đây cần chạy trên máy có GPU CUDA đủ mạnh (thuê Colab Pro/Kaggle/RunPod/Vast.ai,
-≥ 8GB VRAM, khuyến nghị ≥ 16GB để thoải mái). **Hãy tự sanity-check từng bước**
-(script đã có nhiều assertion/cảnh báo tự động, nhưng vẫn nên nhìn qua output).
+1. train từ đầu
+2. lưu checkpoint `.pth`
+3. resume lên iteration cao hơn
 
-## 0. Cài đặt (làm 1 lần trên máy GPU thuê)
+## File chính
 
-```bash
-# PyTorch: cài đúng bản khớp CUDA của máy, xem https://pytorch.org/get-started/locally/
-pip install -r requirements.txt   # pycolmap, numpy, Pillow, scikit-image, lpips, plyfile, tqdm
+- [kaggle_train_resume.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_train_resume.ipynb)
+- [kaggle_round1_public_resume.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/kaggle_round1_public_resume.ipynb)
+- [scripts/03_train_3dgs.sh](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/03_train_3dgs.sh)
+- [scripts/render_round1_test_poses.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/render_round1_test_poses.py)
+- [scripts/eval_round1_metrics.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/eval_round1_metrics.py)
 
-# Repo train/render 3DGS — KHÔNG cài qua pip
-git clone --recursive https://github.com/graphdeco-inria/gaussian-splatting.git
-cd gaussian-splatting
-pip install submodules/diff-gaussian-rasterization submodules/simple-knn
-cd ..
-export GS_REPO=$(pwd)/gaussian-splatting   # cần export lại mỗi lần mở terminal mới
+## Dataset giả định
+
+Script train mới dùng trực tiếp dataset đang có cấu trúc:
+
+```text
+Dataset/VAI_NVS_DATA_ROUND2/<SCENE>/train/images
+Dataset/VAI_NVS_DATA_ROUND2/<SCENE>/train/sparse/0
 ```
 
-## 1. Thứ tự chạy (đúng theo `Hướng đi.md`)
+Không còn phụ thuộc các script cũ như holdout, depth, antenna, refine.
 
-Sparse `sparse/0/` hợp lệ ở cả 13/13 scene — `01_run_colmap.py` mặc định **dùng
-thẳng sparse có sẵn** (chỉ undistort, rất nhanh), không tự chạy lại COLMAP.
+Round1 public_set dùng:
 
-### Bước 0 (tuỳ chọn) — Sanity-check hệ toạ độ nếu còn nghi ngờ
-
-```bash
-cd scripts
-python 02_validate_frame.py
+```text
+Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/train/images
+Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/train/sparse/0
+Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/test/images
+Dataset/VAI_NVS_DATA/phase1/public_set/<SCENE>/test/test_poses.csv
 ```
 
-So sánh COLMAP tự chạy vs sparse có sẵn của `HCM0249` — chỉ cần chạy nếu muốn
-đối chiếu thêm; không còn là điều kiện bắt buộc trước khi làm tiếp (xem
-`Hướng đi.md` mục 1).
+## Biến môi trường quan trọng
 
-### Bước 1 — Chuẩn bị dữ liệu COLMAP cho từng scene (dùng sparse có sẵn)
+- `GS_REPO`: đường dẫn repo `gaussian-splatting`
+- `DATASET_ROOT`: gốc dataset, mặc định `Dataset/VAI_NVS_DATA_ROUND2`
+- `ITERATIONS`: iteration đích
+- `START_CHECKPOINT`: file `.pth` để resume
+- `SAVE_FINAL_CHECKPOINT=1`: lưu `chkpnt<ITERATIONS>.pth`
+- `ANTIALIASING=1`
+- `EXPOSURE_COMP=1`
 
-```bash
-python 01_run_colmap.py --scene HCM0181            # thử 1 scene public trước
-python 01_run_colmap.py --all --split public        # cả 5 scene public
-python 01_run_colmap.py --all --split private        # cả 8 scene private
-```
+## Gợi ý mặc định
 
-Mặc định tự nhận diện sparse hợp lệ và chỉ undistort (vài giây tới vài chục
-giây/scene). Chỉ khi 1 scene cụ thể thiếu/hỏng sparse (hoặc muốn ép chạy lại để
-đối chiếu) mới cần thêm `--force_own_colmap` (khi đó có thể thêm `--matching
-exhaustive` nếu tỉ lệ đăng ký ảnh thấp).
-
-Output: `pipeline/work/<scene>/colmap/dense/{images/,sparse/0/}`.
-
-### Bước 2 — Train 3D Gaussian Splatting
-
-```bash
-bash 03_train_3dgs.sh HCM0181
-bash 03_train_3dgs.sh HCM0193 HCM0204 hcm0031 hcm0034   # nốt các scene public
-```
-
-### Bước 3 — Render + tự chấm điểm trên public_set (làm trước khi đụng private)
-
-```bash
-python 04_render_test_poses.py --scene HCM0181
-python 05_eval_metrics.py --scene HCM0181
-```
-
-Nếu PSNR/SSIM hợp lý (không phải ảnh nhiễu loạn ngẫu nhiên) trên vài scene public
-→ pipeline ổn, chuyển sang private set. Nếu tệ bất thường → quay lại Bước 0/1
-(khả năng cao là vấn đề hệ toạ độ hoặc COLMAP đăng ký thiếu ảnh).
-
-### Bước 4 — Áp dụng cho 8 scene private_set1
-
-```bash
-python 01_run_colmap.py --all --split private
-bash 03_train_3dgs.sh HCM0249 HCM0254 HCM0276 HCM1439 HNI0131 HNI0265 HNI0366 HNI0437
-for s in HCM0249 HCM0254 HCM0276 HCM1439 HNI0131 HNI0265 HNI0366 HNI0437; do
-    python 04_render_test_poses.py --scene $s
-done
-```
-
-### Bước 5 — Đóng gói & kiểm tra submission
-
-```bash
-python 06_package_submission.py --out ../../submission_round1.zip
-```
-
-Script tự kiểm tra đủ 8 scene / đủ ảnh / đúng kích thước trước khi nén, và verify
-lại chính file zip vừa tạo. Nếu báo lỗi, KHÔNG nộp — sửa xong chạy lại.
-
-## 2. Log chi tiết nằm ở đâu (console chỉ in tóm tắt, tránh spam khi chạy 13 scene)
-
-Tên file log luôn trùng với tên script sinh ra nó, dễ tra cứu:
-
-| File log | Script sinh ra | Ghi gì |
-|---|---|---|
-| `work/<scene>/01_run_colmap.log` | `01_run_colmap.py` | Từng bước COLMAP hoặc undistort sparse có sẵn |
-| `work/<scene>/02_validate_frame.log` | `02_validate_frame.py` | Từng bước COLMAP khi tự chạy lại để đối chiếu |
-| `work/<scene>/03_train_3dgs.log` | `03_train_3dgs.sh` | Toàn bộ output của `train.py` (loss/iteration...) |
-| `work/<scene>/04_render_test_poses.log` | `04_render_test_poses.py` | Từng ảnh đã render (tên file, thứ tự) |
-| `work/<scene>/colmap/pycolmap_internal_logs/` | (COLMAP nội bộ) | Log rất chi tiết của chính thư viện COLMAP (glog) |
-
-Console/notebook chỉ hiện 1-2 dòng tóm tắt mỗi scene (số ảnh đăng ký, số điểm 3D,
-đường dẫn log) — cần xem chi tiết thì mở đúng file log tương ứng ở trên. Nếu
-`03_train_3dgs.sh` báo lỗi, nó tự in 50 dòng cuối của `03_train_3dgs.log` ra
-console để không phải mò file khi có sự cố.
-
-## 3. Ghi chú quan trọng nằm rải trong code (đọc trước khi chạy)
-
-- `common/poses.py`: quy ước quaternion/translation world→camera, công thức FOV —
-  đối chiếu byte-for-byte với `scene/dataset_readers.py` của gaussian-splatting.
-- `common/colmap_runner.py`: dùng camera model `SIMPLE_RADIAL` (không phải
-  `PINHOLE`) vì giải mã trực tiếp `cameras.bin` gốc của BTC (scene `HCM0249`) cho
-  thấy đó là model_id=2=SIMPLE_RADIAL (4 tham số f,cx,cy,k) — khớp với việc mọi
-  pose trong `test_poses.csv` luôn có `fx==fy`. Sau mapping, script tự
-  `undistort_images` sang PINHOLE sạch trước khi đưa vào 3DGS.
-- `scripts/04_render_test_poses.py`: PNG lưu theo `<stem>.png` trong thư mục làm
-  việc nội bộ; tên file CUỐI CÙNG trong zip nộp bài do `06_package_submission.py
-  --filename_mode` quyết định (mặc định giữ nguyên `image_name`, kể cả đuôi
-  `.JPG` gốc — xem `Hướng đi.md` mục 1, chưa có xác nhận BTC).
+- chạy đầu: `ITERATIONS=30000`, `SAVE_FINAL_CHECKPOINT=1`
+- chạy sau: `START_CHECKPOINT=.../chkpnt30000.pth`, `ITERATIONS=60000`

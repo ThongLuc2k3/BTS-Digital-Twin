@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import shutil
 from pathlib import Path
 
@@ -57,17 +58,21 @@ def main():
 
     flat_sparse = dense_dir / "sparse"
     nested_sparse = flat_sparse / "0"
-    if flat_sparse.exists() and not nested_sparse.exists():
-        tmp = dense_dir / "_sparse_tmp"
-        flat_sparse.rename(tmp)
-        nested_parent = dense_dir / "sparse"
-        nested_parent.mkdir(parents=True, exist_ok=True)
-        tmp.rename(nested_parent / "0")
+    sparse_files = ["rigs.bin", "cameras.bin", "frames.bin", "images.bin", "points3D.bin"]
+    if flat_sparse.is_dir():
+        nested_sparse.mkdir(parents=True, exist_ok=True)
+        for name in sparse_files:
+            src = flat_sparse / name
+            dst = nested_sparse / name
+            if src.exists() and not dst.exists():
+                os.link(src, dst)
 
-    final_sparse = dense_dir / "sparse" / "0"
+    final_sparse = dense_dir / "sparse"
     final_images = dense_dir / "images"
     if not final_sparse.is_dir():
         raise SystemExit(f"Không tạo được {final_sparse}")
+    if not nested_sparse.is_dir():
+        raise SystemExit(f"Không tạo được {nested_sparse}")
     if not final_images.is_dir():
         raise SystemExit(f"Không tạo được {final_images}")
 

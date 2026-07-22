@@ -16,6 +16,7 @@ INSTALL_CUDA_TOOLKIT="${INSTALL_CUDA_TOOLKIT:-auto}"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 GUI_ENABLED="${GUI_ENABLED:-OFF}"
 BLAS_BACKEND="${BLAS_BACKEND:-auto}"
+EXTRA_EXE_LINKER_FLAGS="${EXTRA_EXE_LINKER_FLAGS:-}"
 
 if [[ "${1:-}" == "--help" ]]; then
   cat <<EOF
@@ -32,6 +33,7 @@ Environment variables:
   BUILD_JOBS                   parallel build jobs (default: nproc)
   GUI_ENABLED                  ON|OFF, OFF for headless notebooks (default: OFF)
   BLAS_BACKEND                 auto|mkl|openblas (default: auto)
+  EXTRA_EXE_LINKER_FLAGS       extra flags appended to executable linker flags
 
 Example:
   CMAKE_CUDA_ARCHITECTURES=75 bash pipeline/scripts/build_colmap_cuda_notebook.sh
@@ -80,6 +82,10 @@ install_deps() {
     libgmock-dev \
     libsqlite3-dev \
     libglew-dev \
+    libglvnd-dev \
+    libgl1-mesa-dev \
+    libglx-dev \
+    libopengl-dev \
     libcgal-dev \
     libceres-dev \
     libsuitesparse-dev \
@@ -147,8 +153,14 @@ clone_or_update() {
 
 build_colmap() {
   local bla_vendor="Intel10_64lp"
+  local exe_linker_flags="$EXTRA_EXE_LINKER_FLAGS"
   if [[ "$BLAS_BACKEND" == "openblas" ]]; then
     bla_vendor="OpenBLAS"
+  fi
+  if [[ -z "$exe_linker_flags" ]]; then
+    exe_linker_flags="-lGLdispatch"
+  else
+    exe_linker_flags="$exe_linker_flags -lGLdispatch"
   fi
 
   rm -rf "$COLMAP_BUILD_DIR"
@@ -158,6 +170,7 @@ build_colmap() {
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$COLMAP_INSTALL_PREFIX" \
     -DCMAKE_CUDA_ARCHITECTURES="$CMAKE_CUDA_ARCHITECTURES" \
+    -DCMAKE_EXE_LINKER_FLAGS="$exe_linker_flags" \
     -DGUI_ENABLED="$GUI_ENABLED" \
     -DBLA_VENDOR="$bla_vendor"
 
@@ -189,6 +202,7 @@ maybe_set_gcc10
 clone_or_update
 echo "BLAS_BACKEND=$BLAS_BACKEND"
 echo "GUI_ENABLED=$GUI_ENABLED"
+echo "EXTRA_EXE_LINKER_FLAGS=$EXTRA_EXE_LINKER_FLAGS"
 build_colmap
 verify_cuda
 

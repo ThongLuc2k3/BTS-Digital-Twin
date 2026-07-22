@@ -72,6 +72,7 @@ install_deps() {
     libboost-system-dev \
     libeigen3-dev \
     libopenimageio-dev \
+    libopenexr-dev \
     openimageio-tools \
     libmetis-dev \
     libgoogle-glog-dev \

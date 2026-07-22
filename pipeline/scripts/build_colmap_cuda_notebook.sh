@@ -14,6 +14,8 @@ CMAKE_CUDA_ARCHITECTURES="${CMAKE_CUDA_ARCHITECTURES:-native}"
 INSTALL_DEPS="${INSTALL_DEPS:-1}"
 INSTALL_CUDA_TOOLKIT="${INSTALL_CUDA_TOOLKIT:-auto}"
 BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
+GUI_ENABLED="${GUI_ENABLED:-OFF}"
+BLAS_BACKEND="${BLAS_BACKEND:-auto}"
 
 if [[ "${1:-}" == "--help" ]]; then
   cat <<EOF
@@ -28,6 +30,8 @@ Environment variables:
   INSTALL_DEPS                 1 to apt-install dependencies (default: 1)
   INSTALL_CUDA_TOOLKIT         auto|1|0 (default: auto)
   BUILD_JOBS                   parallel build jobs (default: nproc)
+  GUI_ENABLED                  ON|OFF, OFF for headless notebooks (default: OFF)
+  BLAS_BACKEND                 auto|mkl|openblas (default: auto)
 
 Example:
   CMAKE_CUDA_ARCHITECTURES=75 bash pipeline/scripts/build_colmap_cuda_notebook.sh
@@ -45,11 +49,16 @@ run_root() {
 
 install_deps() {
   local install_cuda=0
+  local ubuntu_version=""
 
   if [[ "$INSTALL_CUDA_TOOLKIT" == "1" ]]; then
     install_cuda=1
   elif [[ "$INSTALL_CUDA_TOOLKIT" == "auto" ]] && ! command -v nvcc >/dev/null 2>&1; then
     install_cuda=1
+  fi
+
+  if [[ -f /etc/os-release ]]; then
+    ubuntu_version="$(. /etc/os-release && printf '%s' "${VERSION_ID:-}")"
   fi
 
   run_root apt-get update
@@ -70,19 +79,39 @@ install_deps() {
     libgmock-dev \
     libsqlite3-dev \
     libglew-dev \
-    qt6-base-dev \
-    libqt6opengl6-dev \
-    libqt6openglwidgets6 \
-    libqt6svg6-dev \
     libcgal-dev \
     libceres-dev \
     libsuitesparse-dev \
     libcurl4-openssl-dev \
-    libssl-dev \
-    libmkl-full-dev
+    libssl-dev
   run_root mkdir -p /usr/include/opencv4
 
+  if [[ "$GUI_ENABLED" == "ON" ]]; then
+    run_root apt-get install -y \
+      qt6-base-dev \
+      libqt6opengl6-dev \
+      libqt6openglwidgets6 \
+      libqt6svg6-dev
+  fi
+
+  if [[ "$BLAS_BACKEND" == "mkl" ]]; then
+    run_root apt-get install -y libmkl-full-dev
+  elif [[ "$BLAS_BACKEND" == "openblas" ]]; then
+    run_root apt-get install -y libopenblas-dev
+  else
+    if ! run_root apt-get install -y libmkl-full-dev; then
+      echo "libmkl-full-dev khong co san; fallback sang OpenBLAS" >&2
+      run_root apt-get install -y libopenblas-dev
+      BLAS_BACKEND="openblas"
+    else
+      BLAS_BACKEND="mkl"
+    fi
+  fi
+
   if [[ "$install_cuda" == "1" ]]; then
+    if [[ "$ubuntu_version" == "22.04" ]]; then
+      run_root apt-get install -y gcc-10 g++-10
+    fi
     run_root apt-get install -y \
       nvidia-cuda-toolkit \
       nvidia-cuda-toolkit-gcc
@@ -116,6 +145,11 @@ clone_or_update() {
 }
 
 build_colmap() {
+  local bla_vendor="Intel10_64lp"
+  if [[ "$BLAS_BACKEND" == "openblas" ]]; then
+    bla_vendor="OpenBLAS"
+  fi
+
   rm -rf "$COLMAP_BUILD_DIR"
   mkdir -p "$COLMAP_BUILD_DIR" "$COLMAP_INSTALL_PREFIX"
 
@@ -123,7 +157,8 @@ build_colmap() {
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$COLMAP_INSTALL_PREFIX" \
     -DCMAKE_CUDA_ARCHITECTURES="$CMAKE_CUDA_ARCHITECTURES" \
-    -DBLA_VENDOR=Intel10_64lp
+    -DGUI_ENABLED="$GUI_ENABLED" \
+    -DBLA_VENDOR="$bla_vendor"
 
   cmake --build "$COLMAP_BUILD_DIR" --parallel "$BUILD_JOBS"
   cmake --install "$COLMAP_BUILD_DIR"
@@ -151,6 +186,8 @@ fi
 
 maybe_set_gcc10
 clone_or_update
+echo "BLAS_BACKEND=$BLAS_BACKEND"
+echo "GUI_ENABLED=$GUI_ENABLED"
 build_colmap
 verify_cuda
 

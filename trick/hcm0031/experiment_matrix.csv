@@ -1,0 +1,6 @@
+run_id,date,scene,goal,source_mode,iterations,start_checkpoint,sh_degree,densify_grad_threshold,run_dense,run_train,run_render,run_eval,full_image_score,full_image_psnr,full_image_ssim,full_image_lpips,baseline_delta,status,notes
+baseline_ref,2026-07-22,hcm0031,reference,raw,30000,,3,0.0002,0,0,0,0,0.6731,21.6938,0.6819,0.1542,0.0000,locked,Reference from trick tham khao
+b2_dense_pilot_template,2026-07-22,hcm0031,verify dense fusion,prepared,30000,,3,0.0002,1,0,0,0,,,,,,planned,Pass only if fused.ply and stable logs exist
+prepared_train_template,2026-07-22,hcm0031,test prepared source,prepared,30000,,3,0.0002,0,1,1,1,,,,,,planned,First real score gate against baseline
+checkpoint_sweep_template,2026-07-22,hcm0031,select best checkpoint,prepared,30000,,3,0.0002,0,0,1,1,,,,,,planned,Render and score each saved iteration
+tuning_template,2026-07-22,hcm0031,single-variable tuning,prepared,30000,,3,0.0002,0,1,1,1,,,,,,planned,Only after prepared source proves value

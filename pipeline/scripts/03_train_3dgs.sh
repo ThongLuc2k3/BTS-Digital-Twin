@@ -24,6 +24,17 @@ EXPOSURE_COMP="${EXPOSURE_COMP:-1}"
 SAVE_FINAL_CHECKPOINT="${SAVE_FINAL_CHECKPOINT:-1}"
 START_CHECKPOINT="${START_CHECKPOINT:-}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-60}"
+TRAIN_GUI_IP="${TRAIN_GUI_IP:-127.0.0.1}"
+TRAIN_GUI_PORT="${TRAIN_GUI_PORT:-}"
+LOW_VRAM_PROFILE="${LOW_VRAM_PROFILE:-auto}"
+PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-}"
+DENSIFY_UNTIL_ITER="${DENSIFY_UNTIL_ITER:-}"
+DENSIFY_FROM_ITER="${DENSIFY_FROM_ITER:-}"
+DENSIFICATION_INTERVAL="${DENSIFICATION_INTERVAL:-}"
+OPACITY_RESET_INTERVAL="${OPACITY_RESET_INTERVAL:-}"
+PERCENT_DENSE="${PERCENT_DENSE:-}"
+SAVE_ITERATIONS_OVERRIDE="${SAVE_ITERATIONS_OVERRIDE:-}"
+CHECKPOINT_ITERATIONS_OVERRIDE="${CHECKPOINT_ITERATIONS_OVERRIDE:-}"
 
 if [[ $# -ne 1 ]]; then
   echo "Cách dùng: $0 <SCENE>" >&2
@@ -67,13 +78,86 @@ fi
 
 mkdir -p "$MODEL_DIR"
 
-SAVE_ITERATIONS=()
-for v in 7000 15000 "$ITERATIONS"; do
-  if [[ "$v" -le "$ITERATIONS" ]]; then
-    SAVE_ITERATIONS+=("$v")
+build_iteration_list() {
+  local raw="$1"
+  local max_iter="$2"
+  local item
+  local out=()
+
+  raw="${raw//,/ }"
+  for item in $raw; do
+    if [[ "$item" =~ ^[0-9]+$ ]] && [[ "$item" -le "$max_iter" ]]; then
+      out+=("$item")
+    fi
+  done
+
+  if [[ ${#out[@]} -eq 0 ]]; then
+    return 0
   fi
-done
-SAVE_ITERATIONS=($(printf "%s\n" "${SAVE_ITERATIONS[@]}" | awk '!seen[$0]++'))
+
+  printf "%s\n" "${out[@]}" | awk '!seen[$0]++' | sort -n
+}
+
+SAVE_ITERATIONS=()
+if [[ -n "$SAVE_ITERATIONS_OVERRIDE" ]]; then
+  while IFS= read -r v; do
+    [[ -n "$v" ]] && SAVE_ITERATIONS+=("$v")
+  done < <(build_iteration_list "$SAVE_ITERATIONS_OVERRIDE" "$ITERATIONS")
+else
+  for v in 7000 15000 "$ITERATIONS"; do
+    if [[ "$v" -le "$ITERATIONS" ]]; then
+      SAVE_ITERATIONS+=("$v")
+    fi
+  done
+  SAVE_ITERATIONS=($(printf "%s\n" "${SAVE_ITERATIONS[@]}" | awk '!seen[$0]++' | sort -n))
+fi
+
+CHECKPOINT_ITERATIONS=()
+if [[ -n "$CHECKPOINT_ITERATIONS_OVERRIDE" ]]; then
+  while IFS= read -r v; do
+    [[ -n "$v" ]] && CHECKPOINT_ITERATIONS+=("$v")
+  done < <(build_iteration_list "$CHECKPOINT_ITERATIONS_OVERRIDE" "$ITERATIONS")
+fi
+
+if [[ "$LOW_VRAM_PROFILE" == "auto" ]]; then
+  if [[ -d /content || -d /kaggle/working ]]; then
+    LOW_VRAM_PROFILE="1"
+  else
+    LOW_VRAM_PROFILE="0"
+  fi
+fi
+
+if [[ "$LOW_VRAM_PROFILE" == "1" ]]; then
+  if [[ "$RESOLUTION" == "-1" ]]; then
+    RESOLUTION="4"
+  fi
+  if [[ -z "$PYTORCH_CUDA_ALLOC_CONF" ]]; then
+    PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
+  fi
+  if [[ -z "$DENSIFY_UNTIL_ITER" ]]; then
+    DENSIFY_UNTIL_ITER="0"
+  fi
+  if [[ -z "$DENSIFY_FROM_ITER" ]]; then
+    DENSIFY_FROM_ITER="0"
+  fi
+  if [[ -z "$DENSIFICATION_INTERVAL" ]]; then
+    DENSIFICATION_INTERVAL="0"
+  fi
+  if [[ -z "$OPACITY_RESET_INTERVAL" ]]; then
+    OPACITY_RESET_INTERVAL="300000"
+  fi
+  if [[ -z "$PERCENT_DENSE" ]]; then
+    PERCENT_DENSE="0.0"
+  fi
+  if [[ -z "$SAVE_ITERATIONS_OVERRIDE" ]]; then
+    SAVE_ITERATIONS=(2000 4000 6000 8000 10000 12000 15000 "$ITERATIONS")
+    SAVE_ITERATIONS=($(printf "%s\n" "${SAVE_ITERATIONS[@]}" | awk -v max="$ITERATIONS" '$1 <= max && !seen[$1]++' | sort -n))
+  fi
+  if [[ -z "$CHECKPOINT_ITERATIONS_OVERRIDE" ]]; then
+    CHECKPOINT_ITERATIONS=(2000 4000 6000 8000 10000 12000 15000 "$ITERATIONS")
+    CHECKPOINT_ITERATIONS=($(printf "%s\n" "${CHECKPOINT_ITERATIONS[@]}" | awk -v max="$ITERATIONS" '$1 <= max && !seen[$1]++' | sort -n))
+  fi
+fi
 
 EXTRA_ARGS=()
 if [[ "$ANTIALIASING" == "1" ]]; then
@@ -89,18 +173,61 @@ if [[ -n "$START_CHECKPOINT" ]]; then
   fi
   EXTRA_ARGS+=(--start_checkpoint "$START_CHECKPOINT")
 fi
-if [[ "$SAVE_FINAL_CHECKPOINT" == "1" ]]; then
+if [[ ${#CHECKPOINT_ITERATIONS[@]} -gt 0 ]]; then
+  EXTRA_ARGS+=(--checkpoint_iterations "${CHECKPOINT_ITERATIONS[@]}")
+elif [[ "$SAVE_FINAL_CHECKPOINT" == "1" ]]; then
   EXTRA_ARGS+=(--checkpoint_iterations "$ITERATIONS")
 fi
+if [[ -n "$DENSIFY_UNTIL_ITER" ]]; then
+  EXTRA_ARGS+=(--densify_until_iter "$DENSIFY_UNTIL_ITER")
+fi
+if [[ -n "$DENSIFY_FROM_ITER" ]]; then
+  EXTRA_ARGS+=(--densify_from_iter "$DENSIFY_FROM_ITER")
+fi
+if [[ -n "$DENSIFICATION_INTERVAL" ]]; then
+  EXTRA_ARGS+=(--densification_interval "$DENSIFICATION_INTERVAL")
+fi
+if [[ -n "$OPACITY_RESET_INTERVAL" ]]; then
+  EXTRA_ARGS+=(--opacity_reset_interval "$OPACITY_RESET_INTERVAL")
+fi
+if [[ -n "$PERCENT_DENSE" ]]; then
+  EXTRA_ARGS+=(--percent_dense "$PERCENT_DENSE")
+fi
+
+if [[ -z "$TRAIN_GUI_PORT" ]]; then
+  TRAIN_GUI_PORT="$(python3 - <<'PY'
+import socket
+with socket.socket() as s:
+    s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+PY
+)"
+fi
+
+EXTRA_ARGS+=(--ip "$TRAIN_GUI_IP" --port "$TRAIN_GUI_PORT")
 
 echo "===== Train 3DGS: scene=$SCENE iterations=$ITERATIONS antialiasing=$ANTIALIASING exposure=$EXPOSURE_COMP ====="
 echo "SOURCE_MODE=$SOURCE_MODE"
 echo "SOURCE_DIR=$SOURCE_DIR"
+echo "TRAIN_GUI_IP=$TRAIN_GUI_IP"
+echo "TRAIN_GUI_PORT=$TRAIN_GUI_PORT"
+echo "LOW_VRAM_PROFILE=$LOW_VRAM_PROFILE"
+echo "RESOLUTION=$RESOLUTION"
+echo "DENSIFY_UNTIL_ITER=${DENSIFY_UNTIL_ITER:-unset}"
+echo "PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-unset}"
+echo "SAVE_ITERATIONS=${SAVE_ITERATIONS[*]}"
+if [[ ${#CHECKPOINT_ITERATIONS[@]} -gt 0 ]]; then
+  echo "CHECKPOINT_ITERATIONS=${CHECKPOINT_ITERATIONS[*]}"
+fi
 if [[ -n "$START_CHECKPOINT" ]]; then
   echo "Resume từ: $START_CHECKPOINT"
 fi
 
-python "$GS_REPO/train.py" \
+if [[ -n "$PYTORCH_CUDA_ALLOC_CONF" ]]; then
+  export PYTORCH_CUDA_ALLOC_CONF
+fi
+
+python3 "$GS_REPO/train.py" \
   -s "$SOURCE_DIR" \
   -m "$MODEL_DIR" \
   --iterations "$ITERATIONS" \

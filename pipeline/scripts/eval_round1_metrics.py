@@ -30,6 +30,8 @@ def main():
     ap.add_argument("--renders_dir", required=True)
     ap.add_argument("--out_csv", required=True)
     ap.add_argument("--psnr_max", type=float, default=50.0)
+    ap.add_argument("--skyline_top_frac", type=float, default=None)
+    ap.add_argument("--tower_bbox3d_json", default=None)
     args = ap.parse_args()
 
     gt_dir = Path(args.dataset_root) / args.scene / "test" / "images"

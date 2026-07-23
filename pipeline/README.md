@@ -52,6 +52,8 @@ Repo hiện có sẵn workflow pilot cho nhánh:
 
 - [scripts/04_run_colmap_dense.sh](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/04_run_colmap_dense.sh): chạy `prepare_round1_scene.py`, `patch_match_stereo`, `stereo_fusion`, ghi log và timing.
 - [scripts/05_run_b2_pilot.sh](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/05_run_b2_pilot.sh): orchestration cho dense pilot, train tùy chọn, render, và chấm lại `M0`.
+- [scripts/manage_b2_artifacts.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/manage_b2_artifacts.py): audit `B2`, đóng gói curated bundle, hoặc re-eval `latest iteration`.
+- [scripts/generate_b2_variant_notebooks.py](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/pipeline/scripts/generate_b2_variant_notebooks.py): sinh các notebook biến thể `B2_done`.
 
 ### Chạy dense pilot tối thiểu
 
@@ -92,4 +94,19 @@ bash pipeline/scripts/05_run_b2_pilot.sh hcm0031
 - `03_train_3dgs.sh` giờ hỗ trợ `SOURCE_MODE=auto|raw|prepared`.
 - `SOURCE_MODE=prepared` dùng `pipeline/work/<SCENE>/colmap/dense` làm source train.
 - `B2` trong repo hiện tại mới đóng gói chắc phần `dense stereo` pilot và vòng `render/eval`.
-- `depth regularization` vào training chưa có sẵn trong workspace này; nếu muốn đi hết `B2` đúng nghĩa, cần thêm support ở nhánh `GS_REPO` đang train.
+- `depth regularization` thật vẫn phụ thuộc support của nhánh `GS_REPO` đang train.
+
+### Notebook biến thể `B2_done`
+
+Các notebook trong [downloads](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/downloads) được tách theo mục tiêu debug cụ thể:
+
+- [B2_done.ipynb](/home/thongluc/Khóa%20Luận%20Tốt%20Nghiệp/BTS%20Digital%20Twin/downloads/B2_done.ipynb): notebook gốc đang dùng để chạy và audit `B2`.
+- [B2_done 1.ipynb](</home/thongluc/Khóa Luận Tốt Nghiệp/BTS Digital Twin/downloads/B2_done 1.ipynb>): bật `depth supervision` thật bằng cách patch `03_train_3dgs.sh` trong repo clone để truyền `--depths .../stereo/depth_maps` vào `GS_REPO`.
+- [B2_done 2.ipynb](</home/thongluc/Khóa Luận Tốt Nghiệp/BTS Digital Twin/downloads/B2_done 2.ipynb>): giống bản 1, nhưng ép `LOW_VRAM_PROFILE=0` để bỏ profile low-VRAM và trả về train profile mặc định nếu GPU chịu được.
+- [B2_done 2 safe.ipynb](</home/thongluc/Khóa Luận Tốt Nghiệp/BTS Digital Twin/downloads/B2_done 2 safe.ipynb>): fallback an toàn hơn, vẫn giữ `LOW_VRAM_PROFILE=1` nhưng override các biến densification để tránh bị khóa Gaussian như run cũ.
+
+Ba notebook biến thể đều:
+
+- giữ nguyên notebook gốc
+- patch repo clone tạm thời trong runtime notebook, không sửa file gốc trong workspace
+- fail sớm nếu `GS_REPO` clone không lộ rõ support cho `--depths`

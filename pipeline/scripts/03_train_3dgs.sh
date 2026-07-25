@@ -64,7 +64,7 @@ case "$SOURCE_MODE" in
     exit 1
     ;;
 esac
-MODEL_DIR="$PIPELINE_DIR/work/$SCENE/gs_model"
+MODEL_DIR="${MODEL_DIR:-$PIPELINE_DIR/work/$SCENE/gs_model}"
 LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
 
 if [[ ! -d "$SOURCE_DIR/images" ]]; then

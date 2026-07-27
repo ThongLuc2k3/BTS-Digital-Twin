@@ -35,6 +35,7 @@ OPACITY_RESET_INTERVAL="${OPACITY_RESET_INTERVAL:-}"
 PERCENT_DENSE="${PERCENT_DENSE:-}"
 SAVE_ITERATIONS_OVERRIDE="${SAVE_ITERATIONS_OVERRIDE:-}"
 CHECKPOINT_ITERATIONS_OVERRIDE="${CHECKPOINT_ITERATIONS_OVERRIDE:-}"
+SOURCE_DIR_OVERRIDE="${SOURCE_DIR_OVERRIDE:-}"
 
 if [[ $# -ne 1 ]]; then
   echo "Cách dùng: $0 <SCENE>" >&2
@@ -45,25 +46,30 @@ SCENE="$1"
 PREPARED_SOURCE_DIR="$PIPELINE_DIR/work/$SCENE/colmap/dense"
 RAW_SOURCE_DIR="$DATASET_ROOT/$SCENE/train"
 SOURCE_MODE="${SOURCE_MODE:-auto}"
-case "$SOURCE_MODE" in
-  auto)
-    if [[ -d "$PREPARED_SOURCE_DIR/images" && -d "$PREPARED_SOURCE_DIR/sparse/0" ]]; then
+if [[ -n "$SOURCE_DIR_OVERRIDE" ]]; then
+  SOURCE_DIR="$SOURCE_DIR_OVERRIDE"
+  SOURCE_MODE="override"
+else
+  case "$SOURCE_MODE" in
+    auto)
+      if [[ -d "$PREPARED_SOURCE_DIR/images" && -d "$PREPARED_SOURCE_DIR/sparse/0" ]]; then
+        SOURCE_DIR="$PREPARED_SOURCE_DIR"
+      else
+        SOURCE_DIR="$RAW_SOURCE_DIR"
+      fi
+      ;;
+    prepared)
       SOURCE_DIR="$PREPARED_SOURCE_DIR"
-    else
+      ;;
+    raw)
       SOURCE_DIR="$RAW_SOURCE_DIR"
-    fi
-    ;;
-  prepared)
-    SOURCE_DIR="$PREPARED_SOURCE_DIR"
-    ;;
-  raw)
-    SOURCE_DIR="$RAW_SOURCE_DIR"
-    ;;
-  *)
-    echo "Lỗi: SOURCE_MODE phải là auto, prepared, hoặc raw. Hiện tại: $SOURCE_MODE" >&2
-    exit 1
-    ;;
-esac
+      ;;
+    *)
+      echo "Lỗi: SOURCE_MODE phải là auto, prepared, hoặc raw. Hiện tại: $SOURCE_MODE" >&2
+      exit 1
+      ;;
+  esac
+fi
 MODEL_DIR="${MODEL_DIR:-$PIPELINE_DIR/work/$SCENE/gs_model}"
 LOG_FILE="$PIPELINE_DIR/work/$SCENE/train.log"
 
@@ -209,6 +215,9 @@ EXTRA_ARGS+=(--ip "$TRAIN_GUI_IP" --port "$TRAIN_GUI_PORT")
 echo "===== Train 3DGS: scene=$SCENE iterations=$ITERATIONS antialiasing=$ANTIALIASING exposure=$EXPOSURE_COMP ====="
 echo "SOURCE_MODE=$SOURCE_MODE"
 echo "SOURCE_DIR=$SOURCE_DIR"
+if [[ -n "$SOURCE_DIR_OVERRIDE" ]]; then
+  echo "SOURCE_DIR_OVERRIDE=$SOURCE_DIR_OVERRIDE"
+fi
 echo "TRAIN_GUI_IP=$TRAIN_GUI_IP"
 echo "TRAIN_GUI_PORT=$TRAIN_GUI_PORT"
 echo "LOW_VRAM_PROFILE=$LOW_VRAM_PROFILE"

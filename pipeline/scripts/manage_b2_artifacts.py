@@ -391,7 +391,7 @@ def main() -> None:
     ap.add_argument("--work_root", default=None, help="Thu muc cha cua cac scene trong pipeline/work")
     ap.add_argument("--dataset_root", default=None)
     ap.add_argument("--gs_repo", default=None)
-    ap.add_argument("--psnr_max", type=float, default=30.0)
+    ap.add_argument("--psnr_max", type=float, default=50.0)
     ap.add_argument("--include_renders_archive", action="store_true")
     args = ap.parse_args()
 

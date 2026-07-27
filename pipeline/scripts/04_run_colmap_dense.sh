@@ -15,6 +15,7 @@ DATASET_ROOT="${DATASET_ROOT:-$PROJECT_ROOT/Dataset/VAI_NVS_DATA/phase1/public_s
 WORK_ROOT="${WORK_ROOT:-$PIPELINE_DIR/work}"
 COLMAP_BIN="${COLMAP_BIN:-$(command -v colmap || true)}"
 PREPARE_SCENE="${PREPARE_SCENE:-1}"
+RUN_STEREO="${RUN_STEREO:-1}"
 PATCH_MATCH_MAX_IMAGE_SIZE="${PATCH_MATCH_MAX_IMAGE_SIZE:-2000}"
 PATCH_MATCH_GEOM_CONSISTENCY="${PATCH_MATCH_GEOM_CONSISTENCY:-true}"
 PATCH_MATCH_WINDOW_RADIUS="${PATCH_MATCH_WINDOW_RADIUS:-5}"
@@ -52,6 +53,27 @@ if [[ ! -d "$DENSE_DIR/images" || ! -d "$DENSE_DIR/sparse/0" ]]; then
 fi
 
 mkdir -p "$LOG_DIR"
+
+if [[ "$RUN_STEREO" != "1" ]]; then
+  {
+    echo "scene=$SCENE"
+    echo "dense_dir=$DENSE_DIR"
+    echo "colmap_bin=$COLMAP_BIN"
+    echo "patch_match_seconds=skipped"
+    echo "stereo_fusion_seconds=skipped"
+    echo "depth_map_files=0"
+    echo "normal_map_files=0"
+    echo "consistency_graph_files=0"
+    echo "fused_ply="
+    echo "fused_ply_bytes=0"
+    echo "patch_log="
+    echo "fusion_log="
+  } >"$SUMMARY_FILE"
+  echo "COLMAP dense pilot xong (RUN_STEREO=0, bỏ qua patch_match_stereo/stereo_fusion): scene=$SCENE"
+  echo "images/sparse đã sẵn sàng ở $DENSE_DIR (đủ để train, không có depth_maps vì không dùng --depths)"
+  echo "Summary: $SUMMARY_FILE"
+  exit 0
+fi
 
 run_timed() {
   local log_file="$1"

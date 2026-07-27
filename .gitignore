@@ -3,7 +3,14 @@
 Dataset/VAI_NVS_DATA/
 
 # Output trung gian của pipeline (COLMAP database, model 3DGS, ảnh render...) — sinh lại được, không phải source.
-pipeline/work/
+pipeline/work/*
+# Ngoại lệ: tower_bbox3d.json (nhẹ, cần có trong repo clone trên Colab/Kaggle để
+# build_tower_train_masks.py chạy được cho antenna-focus stage 2 training).
+# Dùng pipeline/work/* (không phải pipeline/work/) + chain "!" từng cấp, vì git
+# không cho re-include file khi thư mục cha bị exclude bằng pattern "dir/".
+!pipeline/work/hcm0031/
+pipeline/work/hcm0031/*
+!pipeline/work/hcm0031/tower_bbox3d.json
 
 # Checkpoint (gs_model/) tải thủ công về từ Kaggle Output cho từng scene — nặng, chỉ lưu
 # local/Google Drive, không lưu trong repo (cấu trúc thư mục public_set/private_set1/<scene>
